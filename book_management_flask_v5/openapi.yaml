@@ -1,0 +1,213 @@
+openapi: 3.0.0
+info:
+  title: Book Management API
+  description: API for managing books, users, and borrowings.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000
+paths:
+  /api/v1/register:
+    post:
+      summary: Register a new user
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        201:
+          description: User registered successfully
+        400:
+          description: Missing or duplicate email
+  /api/v1/login:
+    post:
+      summary: Login user and get JWT token
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+      responses:
+        200:
+          description: Login success, return JWT token
+        401:
+          description: Invalid email
+  /api/v1/books:
+    get:
+      summary: Get all books
+      tags:
+        - Books
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: List of all books
+    post:
+      summary: Add a new book
+      tags:
+        - Books
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                author:
+                  type: string
+      responses:
+        201:
+          description: Book added successfully
+  /api/v1/books/{id}:
+    get:
+      summary: Get book by ID
+      tags:
+        - Books
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Return a single book
+    put:
+      summary: Update a book
+      tags:
+        - Books
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                author:
+                  type: string
+      responses:
+        200:
+          description: Book updated successfully
+    delete:
+      summary: Delete a book
+      tags:
+        - Books
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Book deleted successfully
+  /api/v1/users:
+    get:
+      summary: Get all users
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: List of all users
+  /api/v1/users/{id}:
+    get:
+      summary: Get user by ID
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Return user info
+  /api/v1/borrowings:
+    get:
+      summary: Get all borrowings
+      tags:
+        - Borrowings
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: List of all borrowings
+    post:
+      summary: Borrow a book
+      tags:
+        - Borrowings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                book_id:
+                  type: integer
+                user_id:
+                  type: integer
+      responses:
+        201:
+          description: Book borrowed successfully
+  /api/v1/borrowings/{id}/return:
+    post:
+      summary: Return a borrowed book
+      tags:
+        - Borrowings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Book returned successfully
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
