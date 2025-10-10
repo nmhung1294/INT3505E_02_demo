@@ -1,8 +1,11 @@
+# ======================================================
+# BOOK APIs
+# ======================================================
+import time
 from flask import Blueprint, jsonify, request, abort
 from . import db
 from .models import Book, User, Borrowing
 from datetime import datetime, timedelta
-from flasgger import swag_from
 from functools import wraps
 import jwt
 import os
@@ -10,7 +13,6 @@ import os
 api = Blueprint('api', __name__)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "nmhung_secret")
-
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -32,111 +34,6 @@ def token_required(f):
 
         return f(current_user, *args, **kwargs)
     return decorated
-
-@api.route('api/v1/register', methods=['POST'])
-@swag_from({
-    'summary': 'Đăng ký người dùng mới',
-    'description': 'Tạo user mới và tự động trả về JWT token có hiệu lực 1 giờ.',
-    'parameters': [{
-        'name': 'body',
-        'in': 'body',
-        'schema': {
-            'type': 'object',
-            'properties': {
-                'name': {'type': 'string', 'example': 'Alice'},
-                'email': {'type': 'string', 'example': 'alice@example.com'}
-            },
-            'required': ['name', 'email']
-        }
-    }],
-    'responses': {
-        201: {'description': 'User registered successfully with JWT token'},
-        400: {'description': 'Missing fields or email already exists'}
-    }
-})
-def register():
-    data = request.json
-    if not data or 'name' not in data or 'email' not in data:
-        abort(400, description="Name and email required")
-
-    # Kiểm tra email tồn tại
-    existing_user = User.query.filter_by(email=data['email']).first()
-    if existing_user:
-        abort(400, description="Email already registered")
-
-    # Tạo user mới
-    new_user = User(name=data['name'], email=data['email'])
-    db.session.add(new_user)
-    db.session.commit()
-
-    # Sinh token JWT có hiệu lực 1h
-    token = jwt.encode({
-        'user_id': new_user.id,
-        'exp': datetime.utcnow() + timedelta(hours=1)
-    }, SECRET_KEY, algorithm="HS256")
-
-    return jsonify({
-        'message': 'User registered successfully',
-        'token': token
-    }), 201
-
-
-# ======================================================
-# API: Đăng nhập
-# ======================================================
-@api.route('api/v1/login', methods=['POST'])
-@swag_from({
-    'summary': 'Đăng nhập người dùng',
-    'description': 'Nhập email để lấy JWT token hợp lệ trong 1 giờ.',
-    'parameters': [{
-        'name': 'body',
-        'in': 'body',
-        'schema': {
-            'type': 'object',
-            'properties': {
-                'email': {'type': 'string', 'example': 'alice@example.com'}
-            },
-            'required': ['email']
-        }
-    }],
-    'responses': {
-        200: {'description': 'JWT token returned'},
-        400: {'description': 'Email required'},
-        401: {'description': 'Invalid email'}
-    }
-})
-def login():
-    data = request.json
-    if not data or 'email' not in data:
-        abort(400, description="Email required")
-
-    user = User.query.filter_by(email=data['email']).first()
-    if not user:
-        abort(401, description="Invalid email")
-
-    # Sinh token JWT
-    token = jwt.encode({
-        'user_id': user.id,
-        'exp': datetime.utcnow() + timedelta(hours=1)
-    }, SECRET_KEY, algorithm="HS256")
-
-    return jsonify({'token': token})
-
-
-# ======================================================
-# BOOK APIs
-# ======================================================
-from flask import Blueprint, jsonify, request, abort
-from . import db
-from .models import Book, User, Borrowing
-from datetime import datetime, timedelta
-from functools import wraps
-import jwt
-import os
-
-api = Blueprint('api', __name__)
-
-SECRET_KEY = os.getenv("SECRET_KEY", "nmhung_secret")
 
 # ===============================
 # JWT AUTH DECORATOR
@@ -236,9 +133,6 @@ def login():
     return jsonify({'token': token})
 
 
-# ===============================
-# BOOK APIs
-# ===============================
 @api.route('/api/v1/books', methods=['GET'])
 @token_required
 def get_books(current_user):

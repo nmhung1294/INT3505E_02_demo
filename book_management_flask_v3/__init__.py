@@ -16,7 +16,7 @@ swagger = Swagger(app, template={
         "description": "Simple API for library management (JWT Authentication supported)",
         "version": "1.0"
     },
-    "basePath": "/api", 
+    "basePath": "", 
     "securityDefinitions": {  
         "Bearer": {
             "type": "apiKey",
