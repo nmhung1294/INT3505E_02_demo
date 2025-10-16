@@ -31,7 +31,7 @@ swagger = Swagger(app, template={
 })
 
 
-from .models import Book, User, Borrowing
+from .models import BookTitle, BookCopy, User, Borrowing
 from .api import api as api_blueprint
 
 app.register_blueprint(api_blueprint, url_prefix='/api')
