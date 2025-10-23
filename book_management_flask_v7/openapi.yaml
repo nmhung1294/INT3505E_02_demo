@@ -1,0 +1,455 @@
+openapi: 3.0.0
+info:
+  title: Book Management API
+  description: API for managing users, books, copies, and borrowings (with cache & pagination).
+  version: 1.0.0
+servers:
+  - url: /api
+
+paths:
+  # ============================
+  # AUTH
+  # ============================
+  /auth/register:
+    post:
+      summary: Register a new user
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        "201":
+          description: User created successfully
+        "400":
+          description: Missing or duplicate email
+
+  /auth/login:
+    post:
+      summary: Login and get JWT token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+      responses:
+        "200":
+          description: Login success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        "401":
+          description: Invalid email
+
+  # ============================
+  # USERS
+  # ============================
+  /users:
+    get:
+      summary: Get all users (paginated)
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+                  page:
+                    $ref: "#/components/schemas/PageInfo"
+
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404": { description: User not found }
+
+    delete:
+      summary: Delete a user
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: User deleted }
+        "404": { description: User not found }
+
+  # ============================
+  # BOOK TITLES
+  # ============================
+  /book_titles:
+    get:
+      summary: Get all book titles (paginated, cached)
+      tags: [Book Titles]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated list of book titles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookTitle" }
+                  page:
+                    $ref: "#/components/schemas/PageInfo"
+
+    post:
+      summary: Create new book title
+      tags: [Book Titles]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required: [title, author]
+              type: object
+              properties:
+                title: { type: string }
+                author: { type: string }
+                publisher: { type: string }
+                year: { type: integer }
+                category: { type: string }
+      responses:
+        "201": { description: Book title created }
+        "400": { description: Missing title or author }
+
+  /book_titles/{id}:
+    get:
+      summary: Get book title by ID
+      tags: [Book Titles]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Return book title details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookTitleDetail"
+        "404": { description: Not found }
+
+    put:
+      summary: Update a book title
+      tags: [Book Titles]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                author: { type: string }
+                publisher: { type: string }
+                year: { type: integer }
+                category: { type: string }
+      responses:
+        "200": { description: Book title updated }
+
+    delete:
+      summary: Delete a book title
+      tags: [Book Titles]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Book title deleted }
+        "400": { description: Cannot delete title with copies }
+
+  # ============================
+  # BOOK COPIES
+  # ============================
+  /book_copies:
+    get:
+      summary: Get all book copies (paginated, cached)
+      tags: [Book Copies]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated list of book copies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookCopy" }
+                  page:
+                    $ref: "#/components/schemas/PageInfo"
+
+    post:
+      summary: Create new book copy
+      tags: [Book Copies]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required: [book_title_id, barcode]
+              type: object
+              properties:
+                book_title_id: { type: integer }
+                barcode: { type: string }
+                available: { type: boolean }
+                condition: { type: string }
+      responses:
+        "201": { description: Book copy created }
+        "400": { description: Missing or duplicate barcode }
+
+  /book_copies/{id}:
+    put:
+      summary: Update a book copy
+      tags: [Book Copies]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                available: { type: boolean }
+                condition: { type: string }
+      responses:
+        "200": { description: Book copy updated }
+
+    delete:
+      summary: Delete a book copy
+      tags: [Book Copies]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Book copy deleted }
+        "400": { description: Copy currently borrowed }
+
+  # ============================
+  # BORROWINGS
+  # ============================
+  /borrowings:
+    get:
+      summary: List all borrowings (paginated)
+      tags: [Borrowings]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: size
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Paginated list of borrowings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Borrowing" }
+                  page:
+                    $ref: "#/components/schemas/PageInfo"
+
+    post:
+      summary: Borrow a book copy
+      tags: [Borrowings]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required: [book_copy_id, user_id]
+              type: object
+              properties:
+                book_copy_id: { type: integer }
+                user_id: { type: integer }
+                due_date: { type: string, format: date-time }
+      responses:
+        "201": { description: Book borrowed }
+        "400": { description: Book not available }
+
+  /borrowings/{id}/return:
+    post:
+      summary: Return a borrowed book
+      tags: [Borrowings]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200": { description: Book returned with fine info }
+        "400": { description: Already returned }
+
+# ============================
+# COMPONENTS
+# ============================
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+
+    BookTitle:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        publisher: { type: string }
+        year: { type: integer }
+        category: { type: string }
+        copies_count: { type: integer }
+
+    BookTitleDetail:
+      allOf:
+        - $ref: "#/components/schemas/BookTitle"
+        - type: object
+          properties:
+            copies:
+              type: array
+              items:
+                $ref: "#/components/schemas/BookCopy"
+
+    BookCopy:
+      type: object
+      properties:
+        id: { type: integer }
+        book_title_id: { type: integer }
+        barcode: { type: string }
+        available: { type: boolean }
+        condition: { type: string }
+
+    Borrowing:
+      type: object
+      properties:
+        id: { type: integer }
+        book_copy_id: { type: integer }
+        user_id: { type: integer }
+        borrow_date: { type: string, format: date-time }
+        due_date: { type: string, format: date-time }
+        return_date: { type: string, format: date-time }
+        fine: { type: number }
+        overdue: { type: boolean }
+        days_overdue: { type: integer }
+
+    PageInfo:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total_items: { type: integer }
+        total_pages: { type: integer }
