@@ -1,0 +1,3 @@
+book_management_flask_v7/tests
+book_management_flask_v7/__pycache__/*.pyc
+.env

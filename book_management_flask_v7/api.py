@@ -4,9 +4,11 @@ import json
 import hashlib
 import os
 import jwt
+import requests
 from functools import wraps
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, abort, current_app, make_response
+from urllib.parse import urlencode
 from sqlalchemy.exc import IntegrityError
 from . import db
 from .models import BookTitle, BookCopy, User, Borrowing
@@ -43,7 +45,7 @@ def make_cache_key(path, params=None):
     return hashlib.sha1(f"{path}|{params}".encode()).hexdigest()
 
 # ==========================================
-# JWT DECORATOR
+# JWT MODE and OAUTH2 INTROSPECTION MODE
 # ==========================================
 def token_required(f):
     @wraps(f)
@@ -61,15 +63,60 @@ def token_required(f):
         if not token:
             return jsonify({"message": "Missing token"}), 401
 
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-            current_user = User.query.get(data["id"])
-            if not current_user:
-                abort(401, "Invalid user")
-        except Exception as e:
-            abort(401, f"Invalid token: {str(e)}")
+        auth_mode = current_app.config.get('AUTH_MODE', 'jwt')
 
-        return f(current_user, *args, **kwargs)
+        # JWT mode: decode locally using SECRET_KEY
+        if auth_mode == 'jwt':
+            try:
+                data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                current_user = User.query.get(data["id"])
+                if not current_user:
+                    abort(401, "Invalid user")
+            except Exception as e:
+                abort(401, f"Invalid token: {str(e)}")
+
+            return f(current_user, *args, **kwargs)
+
+        # OAuth2 introspection mode: call introspection endpoint
+        elif auth_mode == 'oauth2':
+            introspect_url = current_app.config.get('OAUTH2_INTROSPECTION_URL')
+            if not introspect_url:
+                abort(500, "OAuth2 introspection URL not configured")
+
+            client_id = current_app.config.get('OAUTH2_INTROSPECTION_CLIENT_ID')
+            client_secret = current_app.config.get('OAUTH2_INTROSPECTION_CLIENT_SECRET')
+            try:
+                auth = None
+                headers = {'Accept': 'application/json'}
+                data = {'token': token}
+                # Use HTTP Basic auth if client credentials provided
+                if client_id and client_secret:
+                    auth = (client_id, client_secret)
+
+                resp = requests.post(introspect_url, data=data, headers=headers, auth=auth, timeout=5)
+                if resp.status_code != 200:
+                    abort(401, 'Token introspection failed')
+                info = resp.json()
+                # RFC7662: active boolean
+                if not info.get('active'):
+                    abort(401, 'Token inactive')
+                # Extract user id from configured field (default 'sub')
+                user_field = current_app.config.get('OAUTH2_USER_ID_FIELD', 'sub')
+                user_id = info.get(user_field)
+                if not user_id:
+                    abort(401, 'User id not present in introspection response')
+                current_user = User.query.get(user_id)
+                if not current_user:
+                    abort(401, 'User not found')
+            except requests.RequestException as e:
+                abort(502, f'Introspection request failed: {str(e)}')
+            except ValueError:
+                abort(502, 'Invalid JSON from introspection endpoint')
+
+            return f(current_user, *args, **kwargs)
+
+        else:
+            abort(500, f'Unknown AUTH_MODE: {auth_mode}')
     return decorated
 
 # ==========================================
@@ -114,6 +161,116 @@ def login():
         algorithm="HS256",
     )
     return jsonify({"token": token}), 200
+
+
+# ==========================================
+# GOOGLE OAUTH2 (OpenID Connect) endpoints
+# ==========================================
+@api.route('/auth/google', methods=['GET'])
+def google_auth_start():
+    #Đoạn này là để khởi tạo URL đăng nhập Google OAuth2
+    #Sau khi gọi xong, lấy auth_url để chuyển đến popup đăng nhập bằng Google
+    client_id = current_app.config.get('GOOGLE_CLIENT_ID')
+    redirect_uri = current_app.config.get('GOOGLE_OAUTH_REDIRECT_URI')
+    scopes = current_app.config.get('GOOGLE_OAUTH_SCOPES', 'openid email profile')
+    if not client_id or not redirect_uri:
+        abort(500, 'Google OAuth not configured')
+    params = {
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'response_type': 'code',
+        'scope': scopes,
+        'access_type': 'offline',
+        'prompt': 'consent'
+    }
+    url = 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode(params)
+    return jsonify({'auth_url': url})
+
+#Chỗ này xử lý callback từ Google sau khi đăng nhập thành công
+@api.route('/auth/google/callback', methods=['GET'])
+def google_auth_callback():
+    code = request.args.get('code')
+    error = request.args.get('error')
+    if error:
+        abort(400, f'Google auth error: {error}')
+    if not code:
+        abort(400, 'Missing code')
+    #Đoạn này là sau khi gọi api http://localhost:5000/api/auth/google ở trên, chọn TK Google đăng nhập
+    #Gọi API để lấy token
+    token_url = 'https://oauth2.googleapis.com/token'
+    client_id = current_app.config.get('GOOGLE_CLIENT_ID')
+    client_secret = current_app.config.get('GOOGLE_CLIENT_SECRET')
+    redirect_uri = current_app.config.get('GOOGLE_OAUTH_REDIRECT_URI')
+    if not client_id or not client_secret or not redirect_uri:
+        abort(500, 'Google OAuth not configured')
+
+    data = {
+        'code': code,
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'redirect_uri': redirect_uri,
+        'grant_type': 'authorization_code'
+    }
+    try:
+        r = requests.post(token_url, data=data, timeout=5)
+        r.raise_for_status()
+        tok = r.json()
+    except requests.RequestException as e:
+        abort(502, f'Failed to exchange code: {str(e)}')
+
+    access_token = tok.get('access_token')
+    if not access_token:
+        abort(502, 'No access_token returned')
+    try:
+        hu = requests.get('https://www.googleapis.com/oauth2/v3/userinfo', headers={
+            'Authorization': f'Bearer {access_token}'
+        }, timeout=5)
+        hu.raise_for_status()
+        info = hu.json()
+    except requests.RequestException as e:
+        abort(502, f'Failed to fetch userinfo: {str(e)}')
+
+    google_sub = info.get('sub')
+    email = info.get('email')
+    name = info.get('name') or info.get('email')
+    if not google_sub or not email:
+        abort(400, 'Invalid userinfo from Google')
+
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        user = User(name=name, email=email)
+        db.session.add(user)
+        db.session.commit()
+
+    token = jwt.encode(
+        {"id": user.id, "exp": datetime.utcnow() + timedelta(hours=2)},
+        SECRET_KEY,
+        algorithm="HS256",
+    )
+    #Đoạn HTML này là để chuyển hướng sang swagger UI (vì chưa có giao diện)
+    if request.accept_mimetypes.accept_html:
+        html = f"""
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Login successful</title>
+</head>
+<body>
+  <h2>Đăng nhập bằng Google thành công</h2>
+  <p>Sao chép token sau đây và dán vào Swagger » Authorize » Bearer token</p>
+  <textarea cols="80" rows="6" readonly>{token}</textarea>
+  <p>
+    <a href="/swagger" target="_blank">Mở Swagger UI</a>
+  </p>
+</body>
+</html>
+"""
+        return make_response(html, 200)
+
+    # Otherwise return JSON (API clients)
+    return jsonify({"token": token, "user": {"id": user.id, "name": user.name, "email": user.email}})
 
 # ==========================================
 # BOOK TITLE APIs
