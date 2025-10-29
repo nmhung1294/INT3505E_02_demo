@@ -7,7 +7,7 @@ import jwt
 import requests
 from functools import wraps
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, request, abort, current_app, make_response
+from flask import Blueprint, jsonify, request, abort, current_app, make_response, render_template, redirect
 from urllib.parse import urlencode
 from sqlalchemy.exc import IntegrityError
 from . import db
@@ -248,29 +248,9 @@ def google_auth_callback():
         SECRET_KEY,
         algorithm="HS256",
     )
-    #Đoạn HTML này là để chuyển hướng sang swagger UI (vì chưa có giao diện)
-    if request.accept_mimetypes.accept_html:
-        html = f"""
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Login successful</title>
-</head>
-<body>
-  <h2>Đăng nhập bằng Google thành công</h2>
-  <p>Sao chép token sau đây và dán vào Swagger » Authorize » Bearer token</p>
-  <textarea cols="80" rows="6" readonly>{token}</textarea>
-  <p>
-    <a href="/swagger" target="_blank">Mở Swagger UI</a>
-  </p>
-</body>
-</html>
-"""
-        return make_response(html, 200)
-
-    # Otherwise return JSON (API clients)
-    return jsonify({"token": token, "user": {"id": user.id, "name": user.name, "email": user.email}})
+    
+    # Return HTML page that saves token to localStorage
+    return render_template('google_callback.html', token=token)
 
 # ==========================================
 # BOOK TITLE APIs

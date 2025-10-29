@@ -1,5 +1,5 @@
 
-from flask import Flask
+from flask import Flask, render_template, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flasgger import Swagger  # Thêm import này
 from dotenv import load_dotenv
@@ -10,7 +10,9 @@ package_dir = os.path.dirname(__file__)
 dotenv_path = os.path.join(package_dir, '.env')
 load_dotenv(dotenv_path)
 
-app = Flask(__name__)
+app = Flask(__name__, 
+            template_folder='templates',
+            static_folder='static')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///library.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = 'supersecretkey'
@@ -77,7 +79,31 @@ swagger = Swagger(app, template={
 from .models import BookTitle, BookCopy, User, Borrowing
 from .api import api as api_blueprint
 
-app.register_blueprint(api_blueprint, url_prefix='/api')
+app.register_blueprint(api_blueprint)
+
+# ==========================================
+# Frontend Routes (HTML pages)
+# ==========================================
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/login.html')
+def login_page():
+    return render_template('login.html')
+
+@app.route('/register.html')
+def register_page():
+    return render_template('register.html')
+
+@app.route('/google-callback.html')
+def google_callback_page():
+    return render_template('google_callback.html')
+
+# Serve static files
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(app.static_folder, filename)
 
 with app.app_context():
     db.create_all()
