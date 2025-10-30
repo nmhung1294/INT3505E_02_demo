@@ -1,0 +1,831 @@
+openapi: 3.0.0
+info:
+  description: "API for managing users, books, copies, and borrowings (with cache\
+    \ & pagination)."
+  title: Book Management API
+  version: 1.0.0
+servers:
+- url: /api
+paths:
+  /auth/login:
+    post:
+      operationId: auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_auth_login_post_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_auth_login_post_200_response"
+          description: Login success
+        "401":
+          description: Invalid email
+      summary: Login and get JWT token
+      tags:
+      - Auth
+      x-openapi-router-controller: openapi_server.controllers.auth_controller
+  /auth/register:
+    post:
+      operationId: auth_register_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_auth_register_post_request"
+        required: true
+      responses:
+        "201":
+          description: User created successfully
+        "400":
+          description: Missing or duplicate email
+      summary: Register a new user
+      tags:
+      - Auth
+      x-openapi-router-controller: openapi_server.controllers.auth_controller
+  /book_copies:
+    get:
+      operationId: book_copies_get
+      parameters:
+      - explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_book_copies_get_200_response"
+          description: Paginated list of book copies
+      security:
+      - BearerAuth: []
+      summary: "Get all book copies (paginated, cached)"
+      tags:
+      - Book Copies
+      x-openapi-router-controller: openapi_server.controllers.book_copies_controller
+    post:
+      operationId: book_copies_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_book_copies_post_request"
+        required: true
+      responses:
+        "201":
+          description: Book copy created
+        "400":
+          description: Missing or duplicate barcode
+      security:
+      - BearerAuth: []
+      summary: Create new book copy
+      tags:
+      - Book Copies
+      x-openapi-router-controller: openapi_server.controllers.book_copies_controller
+  /book_copies/{id}:
+    delete:
+      operationId: book_copies_id_delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          description: Book copy deleted
+        "400":
+          description: Copy currently borrowed
+      security:
+      - BearerAuth: []
+      summary: Delete a book copy
+      tags:
+      - Book Copies
+      x-openapi-router-controller: openapi_server.controllers.book_copies_controller
+    put:
+      operationId: book_copies_id_put
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_book_copies__id__put_request"
+      responses:
+        "200":
+          description: Book copy updated
+      security:
+      - BearerAuth: []
+      summary: Update a book copy
+      tags:
+      - Book Copies
+      x-openapi-router-controller: openapi_server.controllers.book_copies_controller
+  /book_titles:
+    get:
+      operationId: book_titles_get
+      parameters:
+      - explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_book_titles_get_200_response"
+          description: Paginated list of book titles
+      security:
+      - BearerAuth: []
+      summary: "Get all book titles (paginated, cached)"
+      tags:
+      - Book Titles
+      x-openapi-router-controller: openapi_server.controllers.book_titles_controller
+    post:
+      operationId: book_titles_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_book_titles_post_request"
+        required: true
+      responses:
+        "201":
+          description: Book title created
+        "400":
+          description: Missing title or author
+      security:
+      - BearerAuth: []
+      summary: Create new book title
+      tags:
+      - Book Titles
+      x-openapi-router-controller: openapi_server.controllers.book_titles_controller
+  /book_titles/{id}:
+    delete:
+      operationId: book_titles_id_delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          description: Book title deleted
+        "400":
+          description: Cannot delete title with copies
+      security:
+      - BearerAuth: []
+      summary: Delete a book title
+      tags:
+      - Book Titles
+      x-openapi-router-controller: openapi_server.controllers.book_titles_controller
+    get:
+      operationId: book_titles_id_get
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookTitleDetail"
+          description: Return book title details
+        "404":
+          description: Not found
+      security:
+      - BearerAuth: []
+      summary: Get book title by ID
+      tags:
+      - Book Titles
+      x-openapi-router-controller: openapi_server.controllers.book_titles_controller
+    put:
+      operationId: book_titles_id_put
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_book_titles__id__put_request"
+      responses:
+        "200":
+          description: Book title updated
+      security:
+      - BearerAuth: []
+      summary: Update a book title
+      tags:
+      - Book Titles
+      x-openapi-router-controller: openapi_server.controllers.book_titles_controller
+  /borrowings:
+    get:
+      operationId: borrowings_get
+      parameters:
+      - explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_borrowings_get_200_response"
+          description: Paginated list of borrowings
+      security:
+      - BearerAuth: []
+      summary: List all borrowings (paginated)
+      tags:
+      - Borrowings
+      x-openapi-router-controller: openapi_server.controllers.borrowings_controller
+    post:
+      operationId: borrowings_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/_borrowings_post_request"
+        required: true
+      responses:
+        "201":
+          description: Book borrowed
+        "400":
+          description: Book not available
+      security:
+      - BearerAuth: []
+      summary: Borrow a book copy
+      tags:
+      - Borrowings
+      x-openapi-router-controller: openapi_server.controllers.borrowings_controller
+  /borrowings/{id}/return:
+    post:
+      operationId: borrowings_id_return_post
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          description: Book returned with fine info
+        "400":
+          description: Already returned
+      security:
+      - BearerAuth: []
+      summary: Return a borrowed book
+      tags:
+      - Borrowings
+      x-openapi-router-controller: openapi_server.controllers.borrowings_controller
+  /users:
+    get:
+      operationId: users_get
+      parameters:
+      - explode: true
+        in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+        style: form
+      - explode: true
+        in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/_users_get_200_response"
+          description: List of users
+      security:
+      - BearerAuth: []
+      summary: Get all users (paginated)
+      tags:
+      - Users
+      x-openapi-router-controller: openapi_server.controllers.users_controller
+  /users/{id}:
+    delete:
+      operationId: users_id_delete
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          description: User deleted
+        "404":
+          description: User not found
+      security:
+      - BearerAuth: []
+      summary: Delete a user
+      tags:
+      - Users
+      x-openapi-router-controller: openapi_server.controllers.users_controller
+    get:
+      operationId: users_id_get
+      parameters:
+      - explode: false
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: User detail
+        "404":
+          description: User not found
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - Users
+      x-openapi-router-controller: openapi_server.controllers.users_controller
+components:
+  schemas:
+    User:
+      example:
+        name: name
+        id: 0
+        email: email
+      properties:
+        id:
+          title: id
+          type: integer
+        name:
+          title: name
+          type: string
+        email:
+          title: email
+          type: string
+      title: User
+      type: object
+    BookTitle:
+      example:
+        year: 6
+        copies_count: 1
+        author: author
+        publisher: publisher
+        id: 0
+        title: title
+        category: category
+      properties:
+        id:
+          title: id
+          type: integer
+        title:
+          title: title
+          type: string
+        author:
+          title: author
+          type: string
+        publisher:
+          title: publisher
+          type: string
+        year:
+          title: year
+          type: integer
+        category:
+          title: category
+          type: string
+        copies_count:
+          title: copies_count
+          type: integer
+      title: BookTitle
+      type: object
+    BookTitleDetail:
+      allOf:
+      - $ref: "#/components/schemas/BookTitle"
+      - properties:
+          copies:
+            items:
+              $ref: "#/components/schemas/BookCopy"
+            type: array
+        type: object
+      example:
+        copies:
+        - book_title_id: 6
+          condition: condition
+          available: true
+          id: 0
+          barcode: barcode
+        - book_title_id: 6
+          condition: condition
+          available: true
+          id: 0
+          barcode: barcode
+        year: 6
+        copies_count: 1
+        author: author
+        publisher: publisher
+        id: 0
+        title: title
+        category: category
+      title: BookTitleDetail
+    BookCopy:
+      example:
+        book_title_id: 6
+        condition: condition
+        available: true
+        id: 0
+        barcode: barcode
+      properties:
+        id:
+          title: id
+          type: integer
+        book_title_id:
+          title: book_title_id
+          type: integer
+        barcode:
+          title: barcode
+          type: string
+        available:
+          title: available
+          type: boolean
+        condition:
+          title: condition
+          type: string
+      title: BookCopy
+      type: object
+    Borrowing:
+      example:
+        overdue: true
+        user_id: 1
+        fine: 5.962133916683182
+        due_date: 2000-01-23T04:56:07.000+00:00
+        borrow_date: 2000-01-23T04:56:07.000+00:00
+        id: 0
+        days_overdue: 5
+        book_copy_id: 6
+        return_date: 2000-01-23T04:56:07.000+00:00
+      properties:
+        id:
+          title: id
+          type: integer
+        book_copy_id:
+          title: book_copy_id
+          type: integer
+        user_id:
+          title: user_id
+          type: integer
+        borrow_date:
+          format: date-time
+          title: borrow_date
+          type: string
+        due_date:
+          format: date-time
+          title: due_date
+          type: string
+        return_date:
+          format: date-time
+          title: return_date
+          type: string
+        fine:
+          title: fine
+          type: number
+        overdue:
+          title: overdue
+          type: boolean
+        days_overdue:
+          title: days_overdue
+          type: integer
+      title: Borrowing
+      type: object
+    PageInfo:
+      example:
+        size: 5
+        page: 1
+        total_pages: 2
+        total_items: 5
+      properties:
+        page:
+          title: page
+          type: integer
+        size:
+          title: size
+          type: integer
+        total_items:
+          title: total_items
+          type: integer
+        total_pages:
+          title: total_pages
+          type: integer
+      title: PageInfo
+      type: object
+    _auth_register_post_request:
+      properties:
+        name:
+          title: name
+          type: string
+        email:
+          title: email
+          type: string
+      required:
+      - email
+      - name
+      title: _auth_register_post_request
+      type: object
+    _auth_login_post_request:
+      properties:
+        email:
+          title: email
+          type: string
+      required:
+      - email
+      title: _auth_login_post_request
+      type: object
+    _auth_login_post_200_response:
+      example:
+        token: token
+      properties:
+        token:
+          title: token
+          type: string
+      title: _auth_login_post_200_response
+      type: object
+    _users_get_200_response:
+      example:
+        page:
+          size: 5
+          page: 1
+          total_pages: 2
+          total_items: 5
+        items:
+        - name: name
+          id: 0
+          email: email
+        - name: name
+          id: 0
+          email: email
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/User"
+          title: items
+          type: array
+        page:
+          $ref: "#/components/schemas/PageInfo"
+      title: _users_get_200_response
+      type: object
+    _book_titles_get_200_response:
+      example:
+        page:
+          size: 5
+          page: 1
+          total_pages: 2
+          total_items: 5
+        items:
+        - year: 6
+          copies_count: 1
+          author: author
+          publisher: publisher
+          id: 0
+          title: title
+          category: category
+        - year: 6
+          copies_count: 1
+          author: author
+          publisher: publisher
+          id: 0
+          title: title
+          category: category
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/BookTitle"
+          title: items
+          type: array
+        page:
+          $ref: "#/components/schemas/PageInfo"
+      title: _book_titles_get_200_response
+      type: object
+    _book_titles_post_request:
+      properties:
+        title:
+          title: title
+          type: string
+        author:
+          title: author
+          type: string
+        publisher:
+          title: publisher
+          type: string
+        year:
+          title: year
+          type: integer
+        category:
+          title: category
+          type: string
+      required:
+      - author
+      - title
+      title: _book_titles_post_request
+      type: object
+    _book_titles__id__put_request:
+      properties:
+        title:
+          title: title
+          type: string
+        author:
+          title: author
+          type: string
+        publisher:
+          title: publisher
+          type: string
+        year:
+          title: year
+          type: integer
+        category:
+          title: category
+          type: string
+      title: _book_titles__id__put_request
+      type: object
+    _book_copies_get_200_response:
+      example:
+        page:
+          size: 5
+          page: 1
+          total_pages: 2
+          total_items: 5
+        items:
+        - book_title_id: 6
+          condition: condition
+          available: true
+          id: 0
+          barcode: barcode
+        - book_title_id: 6
+          condition: condition
+          available: true
+          id: 0
+          barcode: barcode
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/BookCopy"
+          title: items
+          type: array
+        page:
+          $ref: "#/components/schemas/PageInfo"
+      title: _book_copies_get_200_response
+      type: object
+    _book_copies_post_request:
+      properties:
+        book_title_id:
+          title: book_title_id
+          type: integer
+        barcode:
+          title: barcode
+          type: string
+        available:
+          title: available
+          type: boolean
+        condition:
+          title: condition
+          type: string
+      required:
+      - barcode
+      - book_title_id
+      title: _book_copies_post_request
+      type: object
+    _book_copies__id__put_request:
+      properties:
+        available:
+          title: available
+          type: boolean
+        condition:
+          title: condition
+          type: string
+      title: _book_copies__id__put_request
+      type: object
+    _borrowings_get_200_response:
+      example:
+        page:
+          size: 5
+          page: 1
+          total_pages: 2
+          total_items: 5
+        items:
+        - overdue: true
+          user_id: 1
+          fine: 5.962133916683182
+          due_date: 2000-01-23T04:56:07.000+00:00
+          borrow_date: 2000-01-23T04:56:07.000+00:00
+          id: 0
+          days_overdue: 5
+          book_copy_id: 6
+          return_date: 2000-01-23T04:56:07.000+00:00
+        - overdue: true
+          user_id: 1
+          fine: 5.962133916683182
+          due_date: 2000-01-23T04:56:07.000+00:00
+          borrow_date: 2000-01-23T04:56:07.000+00:00
+          id: 0
+          days_overdue: 5
+          book_copy_id: 6
+          return_date: 2000-01-23T04:56:07.000+00:00
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/Borrowing"
+          title: items
+          type: array
+        page:
+          $ref: "#/components/schemas/PageInfo"
+      title: _borrowings_get_200_response
+      type: object
+    _borrowings_post_request:
+      properties:
+        book_copy_id:
+          title: book_copy_id
+          type: integer
+        user_id:
+          title: user_id
+          type: integer
+        due_date:
+          format: date-time
+          title: due_date
+          type: string
+      required:
+      - book_copy_id
+      - user_id
+      title: _borrowings_post_request
+      type: object
+  securitySchemes:
+    BearerAuth:
+      bearerFormat: JWT
+      scheme: bearer
+      type: http
+      x-bearerInfoFunc: openapi_server.controllers.security_controller.info_from_BearerAuth
