@@ -1,16 +1,16 @@
 // API Base URL
 const API_BASE_URL = '/api';
 
-// Token management using localStorage
+// Token management using sessionStorage
 const TokenManager = {
     set: (token) => {
-        localStorage.setItem('auth_token', token);
+        sessionStorage.setItem('auth_token', token);
     },
     get: () => {
-        return localStorage.getItem('auth_token');
+        return sessionStorage.getItem('auth_token');
     },
     remove: () => {
-        localStorage.removeItem('auth_token');
+        sessionStorage.removeItem('auth_token');
     },
     isAuthenticated: () => {
         const token = TokenManager.get();
@@ -95,7 +95,7 @@ async function login(email) {
             throw new Error(data.message || 'Login failed');
         }
         
-        // Save token to localStorage
+        // Save token to sessionStorage
         TokenManager.set(data.token);
         
         return data;
