@@ -1,64 +1,59 @@
 // API Base URL
 const API_BASE_URL = '/api';
 
-// Token management using localStorage
+// Token management using HTTP-only cookies
+// Note: We cannot access HTTP-only cookies from JavaScript for security reasons
+// The token is automatically sent with each request by the browser
 const TokenManager = {
-    set: (token) => {
-        localStorage.setItem('auth_token', token);
-    },
-    get: () => {
-        return localStorage.getItem('auth_token');
-    },
-    remove: () => {
-        localStorage.removeItem('auth_token');
-    },
-    isAuthenticated: () => {
-        const token = TokenManager.get();
-        if (!token) return false;
-        
-        // Check if token is expired
+    // HTTP-only cookies are managed by the browser automatically
+    // We can't set, get, or remove them directly from JavaScript
+    
+    isAuthenticated: async () => {
+        // Check authentication by calling the /auth/me endpoint
         try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            const exp = payload.exp * 1000; // Convert to milliseconds
-            return Date.now() < exp;
+            const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                method: 'GET',
+                credentials: 'same-origin'  // Include cookies
+            });
+            return response.ok;
         } catch (e) {
             return false;
         }
     },
-    getUserFromToken: () => {
-        const token = TokenManager.get();
-        if (!token) return null;
-        
+    
+    getUserFromToken: async () => {
+        // Get user info from the /auth/me endpoint
         try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            return payload;
+            const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                method: 'GET',
+                credentials: 'same-origin'
+            });
+            if (response.ok) {
+                return await response.json();
+            }
+            return null;
         } catch (e) {
             return null;
         }
     }
 };
 
-// API helper with automatic token injection
+// API helper with automatic cookie handling
 const api = {
     request: async (endpoint, options = {}) => {
-        const token = TokenManager.get();
         const headers = {
             'Content-Type': 'application/json',
             ...options.headers
         };
         
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-        
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
-            headers
+            headers,
+            credentials: 'same-origin'  // Important: Include cookies in requests
         });
         
         if (response.status === 401) {
             // Token expired or invalid
-            TokenManager.remove();
             window.location.href = '/login.html';
             throw new Error('Unauthorized');
         }
@@ -86,6 +81,7 @@ async function login(email) {
             headers: {
                 'Content-Type': 'application/json'
             },
+            credentials: 'same-origin',  // Include cookies
             body: JSON.stringify({ email })
         });
         
@@ -95,8 +91,8 @@ async function login(email) {
             throw new Error(data.message || 'Login failed');
         }
         
-        // Save token to localStorage
-        TokenManager.set(data.token);
+        // Token is now set in HTTP-only cookie by the server
+        // No need to save it manually
         
         return data;
     } catch (error) {
@@ -126,8 +122,18 @@ async function register(name, email) {
     }
 }
 
-function logout() {
-    TokenManager.remove();
+async function logout() {
+    try {
+        // Call logout endpoint to clear HTTP-only cookie
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+    
+    // Redirect to login page
     window.location.href = '/login.html';
 }
 
@@ -151,8 +157,8 @@ async function loginWithGoogle() {
             
             // Listen for message from popup
             window.addEventListener('message', function(event) {
-                if (event.data.type === 'google_auth_success' && event.data.token) {
-                    TokenManager.set(event.data.token);
+                if (event.data.type === 'google_auth_success') {
+                    // Cookie is set by the server, just reload
                     window.location.href = '/';
                     if (popup) popup.close();
                 }
@@ -165,8 +171,9 @@ async function loginWithGoogle() {
 }
 
 // Check authentication on page load
-function checkAuth() {
-    if (!TokenManager.isAuthenticated()) {
+async function checkAuth() {
+    const isAuth = await TokenManager.isAuthenticated();
+    if (!isAuth) {
         if (window.location.pathname !== '/login.html' && window.location.pathname !== '/register.html') {
             window.location.href = '/login.html';
         }

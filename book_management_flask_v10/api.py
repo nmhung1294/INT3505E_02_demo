@@ -55,7 +55,11 @@ def token_required(f):
             return f(None, *args, **kwargs)
 
         token = None
-        if "Authorization" in request.headers:
+        # First try to get token from HTTP-only cookie
+        token = request.cookies.get('auth_token')
+        
+        # Fallback to Authorization header (for backward compatibility)
+        if not token and "Authorization" in request.headers:
             parts = request.headers["Authorization"].split(" ")
             if len(parts) == 2 and parts[0] == "Bearer":
                 token = parts[1]
@@ -160,7 +164,24 @@ def login():
         SECRET_KEY,
         algorithm="HS256",
     )
-    return jsonify({"token": token}), 200
+    
+    # Set token in HTTP-only cookie
+    response = make_response(jsonify({
+        "message": "Login successful",
+        "user": {"id": user.id, "name": user.name, "email": user.email}
+    }), 200)
+    
+    # Set HTTP-only cookie with security flags
+    response.set_cookie(
+        'auth_token',
+        token,
+        httponly=True,      # Prevents JavaScript access (XSS protection)
+        secure=False,       # Set to True in production with HTTPS
+        samesite='Lax',     # CSRF protection
+        max_age=7200        # 2 hours (same as token expiration)
+    )
+    
+    return response
 
 
 # ==========================================
@@ -249,8 +270,44 @@ def google_auth_callback():
         algorithm="HS256",
     )
     
-    # Return HTML page that saves token to localStorage
-    return render_template('google_callback.html', token=token)
+    # Create response with template
+    response = make_response(render_template('google_callback.html', token=token))
+    
+    # Set HTTP-only cookie
+    response.set_cookie(
+        'auth_token',
+        token,
+        httponly=True,
+        secure=False,       # Set to True in production with HTTPS
+        samesite='Lax',
+        max_age=7200        # 2 hours
+    )
+    
+    return response
+
+
+# ==========================================
+# LOGOUT endpoint
+# ==========================================
+@api.route("/auth/logout", methods=["POST"])
+def logout():
+    response = make_response(jsonify({"message": "Logged out successfully"}), 200)
+    # Clear the auth_token cookie
+    response.set_cookie('auth_token', '', expires=0, httponly=True, samesite='Lax')
+    return response
+
+
+# ==========================================
+# User info endpoint
+# ==========================================
+@api.route("/auth/me", methods=["GET"])
+@token_required
+def get_current_user(current_user):
+    return jsonify({
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email
+    }), 200
 
 # ==========================================
 # BOOK TITLE APIs

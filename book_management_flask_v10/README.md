@@ -1,26 +1,40 @@
-# Book Management System v8 - With LocalStorage Token Management-# Book Management Flask (v7) - Authentication & Authorization
+# Book Management System v10 - With HTTP-only Cookie Token Management
 
-
+## Authentication & Authorization Flow
 
 1. **Login/Register**:
-
    - User đăng nhập bằng email hoặc Google OAuth2
-
    - Server trả về JWT token
-   - Token được lưu trong `localStorage` với key `auth_token`
+   - Token được lưu trong **HTTP-only cookie** với key `auth_token`
+   - JavaScript **KHÔNG THỂ** truy cập token (bảo mật cao)
 
-2. **Automatic Token Injection**:
-   - Mọi API request tự động thêm header: `Authorization: Bearer <token>`
-   - Không cần manually quản lý token cho mỗi request
+2. **Automatic Token Handling**:
+   - Browser tự động gửi cookie với mọi request đến cùng domain
+   - Không cần manually quản lý token trong JavaScript
+   - Cookie được bảo vệ bởi `httponly`, `samesite` flags
 
 3. **Token Validation**:
-   - Frontend kiểm tra token expiration trước khi gửi request
-   - Nếu token expired, tự động redirect về trang login
+   - Backend kiểm tra cookie trong mỗi request
+   - Frontend gọi `/auth/me` để verify authentication
    - Token có thời hạn 2 giờ
 
 4. **Logout**:
-   - Xóa token khỏi localStorage
+   - Gọi API `/auth/logout` để xóa cookie
+   - Server clear cookie bằng cách set `expires=0`
    - Redirect về trang login
+
+## HTTP-only Cookie Security
+
+**Bảo mật:**
+- **XSS Protection**: JavaScript không thể đọc token
+- **Automatic**: Browser tự động gửi cookie
+- **Secure flags**: httponly, samesite, secure (HTTPS)
+- **CSRF Protection**: SameSite=Lax ngăn CSRF attacks
+
+**Trade-offs:**
+- Không thể access token từ JavaScript
+- Cần endpoint `/auth/me` để get user info
+- Require same-origin hoặc proper CORS setup
 
 ## Cài đặt và Chạy
 
@@ -32,42 +46,63 @@ pip install flask flask-sqlalchemy pyjwt flasgger python-dotenv requests
 ### Chạy ứng dụng
 Từ thư mục gốc của repository:
 ```bash
-python -m book_management_flask_v8.run
+python -m book_management_flask_v10.run
 ```
 
 Server sẽ chạy tại: **http://localhost:5000**
 
 
-## So sánh với Version 7
+## So sánh các Version
 
-| Feature | Version 7 | Version 8 |
-|---------|-----------|-----------|
-| Token Storage | Manual (client side) | **localStorage** |
-| UI | Swagger only | **Full Web UI** |
-| Token Management | Manual | **Automatic** |
-| Google OAuth | API only | **Integrated UI** |
+| Feature | Version 8 | Version 9 | Version 10 |
+|---------|-----------|-----------|------------|
+| Token Storage | **localStorage** | **sessionStorage** | **HTTP-only Cookie** |
+| UI | **Full Web UI** | **Full Web UI** | **Full Web UI** |
+| Token Management | **Automatic** | **Automatic** | **Automatic** |
+| Google OAuth | **Integrated UI** | **Integrated UI** | **Integrated UI** |
+| Token Persistence | Persistent | Session Only | Session Only |
+| Security Level | Medium | High | **Highest** |
+| XSS Protection | No | No | **Yes** |
+| JavaScript Access | Yes | Yes | **No** |
+| CSRF Protection | Partial | Partial | **Yes (SameSite)** |
 
-Version 8 minh họa:
+Version 10 minh họa:
 
-1. **SPA Authentication**: Single Page Application với JWT
-2. **LocalStorage API**: Browser storage cho client-side data
-3. **Fetch API**: Modern way để gọi REST APIs
-4. **Token Lifecycle**: Create → Store → Use → Validate → Expire
-5. **OAuth2 Flow**: Integration với Google OAuth trong web app
-6. **Frontend/Backend Separation**: Clean separation of concerns
-7. **Error Handling**: Proper error handling và user feedback
+1. **HTTP-only Cookies**: Server-side token management
+2. **XSS Protection**: Token không thể bị steal qua JavaScript
+3. **SameSite Cookie**: Protection against CSRF attacks
+4. **Secure Cookie Flags**: Best practices for cookie security
+5. **Backend Token Validation**: Token checked on server side
+6. **Credential Management**: Proper use of `credentials: 'same-origin'`
+7. **RESTful Auth Endpoint**: `/auth/me` for user verification
+8. **Industry Standard**: Following OWASP recommendations
 
 ## Troubleshooting
 
-**Token không lưu?**
-- Kiểm tra browser console (F12) xem có errors
-- Verify localStorage không bị disabled
-- Check same-origin policy
+**Cookie không được set?**
+- Kiểm tra browser console (F12) → Application → Cookies
+- Verify cookie path và domain
+- Check SameSite compatibility (modern browsers)
 
-**Auto-redirect về login?**
-- Token expired (after 2 hours)
-- Token invalid hoặc bị xóa
-- Check console logs
+**CORS issues?**
+- Ensure `credentials: 'same-origin'` trong fetch calls
+- Backend cần CORS headers nếu frontend khác domain
+- Cookie requires same-origin by default
+
+**Token không được gửi với request?**
+- Verify `credentials: 'same-origin'` trong tất cả fetch calls
+- Check cookie expiration time
+- Ensure cookie path matches API path
+
+**Làm sao debug cookie?**
+- F12 → Application/Storage → Cookies
+- Check cookie flags: HttpOnly, Secure, SameSite
+- Network tab → Request Headers → Cookie
+
+**Production deployment:**
+- Set `secure=True` cho HTTPS
+- Update `GOOGLE_OAUTH_REDIRECT_URI` 
+- Consider `SameSite=Strict` for higher security
 
 **Google OAuth không hoạt động?**
 - Verify GOOGLE_CLIENT_ID và CLIENT_SECRET trong .env

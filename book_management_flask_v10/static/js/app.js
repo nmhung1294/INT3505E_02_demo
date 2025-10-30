@@ -5,22 +5,23 @@ let currentTab = 'books';
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
-    checkAuth();
+    await checkAuth();
     
-    if (TokenManager.isAuthenticated()) {
+    const isAuth = await TokenManager.isAuthenticated();
+    if (isAuth) {
         initApp();
     }
 });
 
-function initApp() {
-    setupUserInfo();
+async function initApp() {
+    await setupUserInfo();
     setupTabs();
     setupEventListeners();
     loadBookTitles();
 }
 
-function setupUserInfo() {
-    const user = TokenManager.getUserFromToken();
+async function setupUserInfo() {
+    const user = await TokenManager.getUserFromToken();
     if (user) {
         document.getElementById('user-id').textContent = `User ID: ${user.id}`;
     }

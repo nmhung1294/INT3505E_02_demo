@@ -59,44 +59,30 @@
 <body>
     <div class="success-container">
         <h2>✅ Đăng nhập Google thành công!</h2>
-        <p class="message">Token của bạn đã được lưu trong localStorage</p>
-        <p class="message">Cửa sổ này sẽ tự động đóng sau 3 giây...</p>
-        <div class="token-box" id="token-display"></div>
+        <p class="message">Token của bạn đã được lưu trong HTTP-only cookie</p>
+        <p class="message">Cửa sổ này sẽ tự động đóng sau 2 giây...</p>
         <a href="/" class="btn">Về trang chủ</a>
     </div>
     
     <script>
-        // Get token from URL parameter or window.opener
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token') || '{{ token }}';
+        // Token is set in HTTP-only cookie by the server
+        // No need to save in localStorage or sessionStorage
         
-        if (token && token !== '{{ token }}') {
-            // Save token to localStorage
-            localStorage.setItem('auth_token', token);
-            
-            // Display token (first and last 20 chars)
-            const displayToken = token.length > 40 ? 
-                token.substring(0, 20) + '...' + token.substring(token.length - 20) : 
-                token;
-            document.getElementById('token-display').textContent = displayToken;
-            
-            // Send message to opener window
-            if (window.opener) {
-                window.opener.postMessage({
-                    type: 'google_auth_success',
-                    token: token
-                }, '*');
-            }
-            
-            // Close window and redirect after 3 seconds
-            setTimeout(() => {
-                if (window.opener) {
-                    window.close();
-                } else {
-                    window.location.href = '/';
-                }
-            }, 3000);
+        // Send success message to opener window
+        if (window.opener) {
+            window.opener.postMessage({
+                type: 'google_auth_success'
+            }, '*');
         }
+        
+        // Close window and redirect after 2 seconds
+        setTimeout(() => {
+            if (window.opener) {
+                window.close();
+            } else {
+                window.location.href = '/';
+            }
+        }, 2000);
     </script>
 </body>
 </html>
