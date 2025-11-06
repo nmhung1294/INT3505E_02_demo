@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "newman": "^6.2.1",
+    "newman-reporter-json": "^1.0.0"
+  }
+}

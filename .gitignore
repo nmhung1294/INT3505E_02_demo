@@ -3,3 +3,5 @@ book_management_flask_v7/__pycache__/*.pyc
 .env
 MIGRATION.md
 SECURITY.md
+node_modules
+README-TESTING.md
