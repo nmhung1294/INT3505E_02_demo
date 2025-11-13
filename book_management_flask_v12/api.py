@@ -400,15 +400,43 @@ def delete_book_title(current_user, id):
     return jsonify({"message": "BookTitle deleted"})
 
 # ==========================================
-# BOOK COPY APIs
+# BOOK COPY APIs - VERSION 1 (DEPRECATED)
 # ==========================================
+# DEPRECATION NOTICE:
+# These v1 endpoints are deprecated and will be removed in version 13.0.0 (June 2026)
+# Please migrate to v2 endpoints (/api/v2/book-copies) which offer:
+# - Enhanced response format with embedded book title information
+# - Better error messages and validation
+# - Improved filtering and search capabilities
+# - RESTful kebab-case naming convention
+# Migration guide: See API_VERSIONING.md
+
+def add_deprecation_headers(response, sunset_date="2026-06-01", new_version="/api/v2/book-copies"):
+    """Add deprecation headers to response according to RFC 8594"""
+    response.headers['Deprecation'] = 'true'
+    response.headers['Sunset'] = sunset_date
+    response.headers['Link'] = f'<{new_version}>; rel="successor-version"'
+    response.headers['Warning'] = '299 - "This API version is deprecated. Please migrate to v2"'
+    return response
+
 @api.route("/book_copies", methods=["GET"])
 @token_required
-def list_book_copies(current_user):
+def list_book_copies_v1(current_user):
+    """
+    [DEPRECATED] List all book copies (v1)
+    
+    Deprecation Info:
+    - Deprecated since: 2025-11-13
+    - Sunset date: 2026-06-01
+    - Replacement: GET /api/v2/book-copies
+    - Migration: v2 includes embedded book title info and better filtering
+    """
     key = make_cache_key(request.path, request.args)
     cached = cache_get(key)
     if cached:
-        return jsonify(cached)
+        response = jsonify(cached)
+        return add_deprecation_headers(response)
+        
     query = BookCopy.query
     items, page_info = paginate(query)
     data = [
@@ -421,13 +449,23 @@ def list_book_copies(current_user):
         }
         for c in items
     ]
-    response = {"items": data, "page": page_info}
-    cache_set(key, response)
-    return jsonify(response)
+    result = {"items": data, "page": page_info}
+    cache_set(key, result)
+    response = jsonify(result)
+    return add_deprecation_headers(response)
 
 @api.route("/book_copies", methods=["POST"])
 @token_required
-def create_book_copy(current_user):
+def create_book_copy_v1(current_user):
+    """
+    [DEPRECATED] Create a new book copy (v1)
+    
+    Deprecation Info:
+    - Deprecated since: 2025-11-13
+    - Sunset date: 2026-06-01
+    - Replacement: POST /api/v2/book-copies
+    - Migration: v2 returns full resource representation instead of just ID
+    """
     data = request.get_json() or {}
     if "book_title_id" not in data or "barcode" not in data:
         abort(400, "Missing book_title_id or barcode")
@@ -446,11 +484,22 @@ def create_book_copy(current_user):
         db.session.rollback()
         abort(400, "Duplicate barcode")
     cache_delete_prefix("/api/book_copies")
-    return jsonify({"message": "BookCopy created", "id": copy.id}), 201
+    cache_delete_prefix("/api/v2/book-copies")
+    response = jsonify({"message": "BookCopy created", "id": copy.id})
+    return add_deprecation_headers(response), 201
 
 @api.route("/book_copies/<int:id>", methods=["PUT"])
 @token_required
-def update_book_copy(current_user, id):
+def update_book_copy_v1(current_user, id):
+    """
+    [DEPRECATED] Update a book copy (v1)
+    
+    Deprecation Info:
+    - Deprecated since: 2025-11-13
+    - Sunset date: 2026-06-01
+    - Replacement: PUT /api/v2/book-copies/{id}
+    - Migration: v2 supports PATCH method and returns updated resource
+    """
     c = BookCopy.query.get_or_404(id)
     data = request.get_json() or {}
     for field in ("available", "condition"):
@@ -458,18 +507,296 @@ def update_book_copy(current_user, id):
             setattr(c, field, data[field])
     db.session.commit()
     cache_delete_prefix("/api/book_copies")
-    return jsonify({"message": "BookCopy updated"})
+    cache_delete_prefix("/api/v2/book-copies")
+    response = jsonify({"message": "BookCopy updated"})
+    return add_deprecation_headers(response)
 
 @api.route("/book_copies/<int:id>", methods=["DELETE"])
 @token_required
-def delete_book_copy(current_user, id):
+def delete_book_copy_v1(current_user, id):
+    """
+    [DEPRECATED] Delete a book copy (v1)
+    
+    Deprecation Info:
+    - Deprecated since: 2025-11-13
+    - Sunset date: 2026-06-01
+    - Replacement: DELETE /api/v2/book-copies/{id}
+    - Migration: v2 provides better error messages
+    """
     c = BookCopy.query.get_or_404(id)
     if Borrowing.query.filter_by(book_copy_id=c.id, return_date=None).first():
         abort(400, "Book copy currently borrowed")
     db.session.delete(c)
     db.session.commit()
     cache_delete_prefix("/api/book_copies")
-    return jsonify({"message": "BookCopy deleted"})
+    cache_delete_prefix("/api/v2/book-copies")
+    response = jsonify({"message": "BookCopy deleted"})
+    return add_deprecation_headers(response)
+
+# ==========================================
+# BOOK COPY APIs - VERSION 2 (CURRENT)
+# ==========================================
+
+def serialize_book_copy_v2(copy, include_book_info=True):
+    """Serialize book copy with enhanced v2 format"""
+    result = {
+        "id": copy.id,
+        "bookTitleId": copy.book_title_id,
+        "barcode": copy.barcode,
+        "available": copy.available,
+        "condition": copy.condition,
+        "metadata": {
+            "createdAt": None,  # Would need to add timestamp fields to model
+            "updatedAt": None
+        }
+    }
+    
+    # Include embedded book title information
+    if include_book_info and copy.book_title:
+        result["bookTitle"] = {
+            "id": copy.book_title.id,
+            "title": copy.book_title.title,
+            "author": copy.book_title.author,
+            "publisher": copy.book_title.publisher,
+            "year": copy.book_title.year
+        }
+    
+    # Include borrowing status
+    active_borrowing = Borrowing.query.filter_by(
+        book_copy_id=copy.id, 
+        return_date=None
+    ).first()
+    
+    result["borrowingStatus"] = {
+        "isBorrowed": not copy.available,
+        "currentBorrowingId": active_borrowing.id if active_borrowing else None,
+        "dueDate": active_borrowing.due_date.isoformat() if active_borrowing and active_borrowing.due_date else None
+    }
+    
+    return result
+
+@api.route("/v2/book-copies", methods=["GET"])
+@token_required
+def list_book_copies_v2(current_user):
+    """
+    Get list of book copies with enhanced information (v2)
+    
+    Query Parameters:
+    - page: Page number (default: 1)
+    - size: Items per page (default: 10)
+    - available: Filter by availability (true/false)
+    - condition: Filter by condition (Good/Damaged/Lost)
+    - bookTitleId: Filter by book title ID
+    - search: Search in barcode
+    
+    Returns:
+    - Enhanced format with embedded book title info
+    - Borrowing status for each copy
+    """
+    key = make_cache_key(request.path, request.args)
+    cached = cache_get(key)
+    if cached:
+        return jsonify(cached)
+    
+    query = BookCopy.query
+    
+    # Apply filters
+    available = request.args.get("available")
+    if available is not None:
+        available_bool = available.lower() in ('true', '1', 'yes')
+        query = query.filter_by(available=available_bool)
+    
+    condition = request.args.get("condition")
+    if condition:
+        query = query.filter_by(condition=condition)
+    
+    book_title_id = request.args.get("bookTitleId")
+    if book_title_id:
+        query = query.filter_by(book_title_id=int(book_title_id))
+    
+    search = request.args.get("search")
+    if search:
+        query = query.filter(BookCopy.barcode.like(f"%{search}%"))
+    
+    items, page_info = paginate(query)
+    data = [serialize_book_copy_v2(c) for c in items]
+    
+    result = {
+        "data": data,
+        "pagination": page_info,
+        "meta": {
+            "version": "2.0",
+            "deprecated": False
+        }
+    }
+    cache_set(key, result)
+    return jsonify(result)
+
+@api.route("/v2/book-copies/<int:id>", methods=["GET"])
+@token_required
+def get_book_copy_v2(current_user, id):
+    """Get single book copy by ID with full details (v2)"""
+    copy = BookCopy.query.get_or_404(id)
+    return jsonify({
+        "data": serialize_book_copy_v2(copy),
+        "meta": {"version": "2.0"}
+    })
+
+@api.route("/v2/book-copies", methods=["POST"])
+@token_required
+def create_book_copy_v2(current_user):
+    """
+    Create a new book copy (v2)
+    
+    Request Body:
+    {
+        "bookTitleId": integer (required),
+        "barcode": string (required, unique),
+        "condition": string (optional, default: "Good")
+    }
+    
+    Returns:
+    - Full resource representation with embedded book info
+    - Location header with new resource URI
+    """
+    data = request.get_json() or {}
+    
+    # Validate required fields
+    if "bookTitleId" not in data or "barcode" not in data:
+        return jsonify({
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "Missing required fields",
+                "details": {
+                    "bookTitleId": "required" if "bookTitleId" not in data else None,
+                    "barcode": "required" if "barcode" not in data else None
+                }
+            }
+        }), 400
+    
+    # Verify book title exists
+    title = BookTitle.query.get(data.get("bookTitleId"))
+    if not title:
+        return jsonify({
+            "error": {
+                "code": "INVALID_BOOK_TITLE",
+                "message": f"Book title with ID {data.get('bookTitleId')} not found"
+            }
+        }), 404
+    
+    # Create book copy
+    copy = BookCopy(
+        book_title_id=data["bookTitleId"],
+        barcode=data["barcode"],
+        available=data.get("available", True),
+        condition=data.get("condition", "Good")
+    )
+    
+    db.session.add(copy)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            "error": {
+                "code": "DUPLICATE_BARCODE",
+                "message": f"Barcode '{data['barcode']}' already exists"
+            }
+        }), 409
+    
+    cache_delete_prefix("/api/book_copies")
+    cache_delete_prefix("/api/v2/book-copies")
+    
+    response = jsonify({
+        "data": serialize_book_copy_v2(copy),
+        "meta": {"version": "2.0"}
+    })
+    response.status_code = 201
+    response.headers['Location'] = f'/api/v2/book-copies/{copy.id}'
+    return response
+
+@api.route("/v2/book-copies/<int:id>", methods=["PUT", "PATCH"])
+@token_required
+def update_book_copy_v2(current_user, id):
+    """
+    Update a book copy (v2)
+    
+    Supports both PUT (full update) and PATCH (partial update)
+    
+    Request Body:
+    {
+        "available": boolean (optional),
+        "condition": string (optional)
+    }
+    
+    Returns:
+    - Full updated resource representation
+    """
+    copy = BookCopy.query.get_or_404(id)
+    data = request.get_json() or {}
+    
+    # Validate condition values
+    if "condition" in data:
+        valid_conditions = ["Good", "Damaged", "Lost"]
+        if data["condition"] not in valid_conditions:
+            return jsonify({
+                "error": {
+                    "code": "INVALID_CONDITION",
+                    "message": f"Condition must be one of: {', '.join(valid_conditions)}"
+                }
+            }), 400
+    
+    # Update fields
+    for field in ("available", "condition"):
+        if field in data:
+            setattr(copy, field, data[field])
+    
+    db.session.commit()
+    cache_delete_prefix("/api/book_copies")
+    cache_delete_prefix("/api/v2/book-copies")
+    
+    return jsonify({
+        "data": serialize_book_copy_v2(copy),
+        "meta": {"version": "2.0"}
+    })
+
+@api.route("/v2/book-copies/<int:id>", methods=["DELETE"])
+@token_required
+def delete_book_copy_v2(current_user, id):
+    """
+    Delete a book copy (v2)
+    
+    Returns:
+    - 204 No Content on success
+    - Detailed error message if copy is currently borrowed
+    """
+    copy = BookCopy.query.get_or_404(id)
+    
+    # Check if currently borrowed
+    active_borrowing = Borrowing.query.filter_by(
+        book_copy_id=copy.id, 
+        return_date=None
+    ).first()
+    
+    if active_borrowing:
+        return jsonify({
+            "error": {
+                "code": "COPY_CURRENTLY_BORROWED",
+                "message": "Cannot delete book copy that is currently borrowed",
+                "details": {
+                    "borrowingId": active_borrowing.id,
+                    "userId": active_borrowing.user_id,
+                    "dueDate": active_borrowing.due_date.isoformat() if active_borrowing.due_date else None
+                }
+            }
+        }), 409
+    
+    db.session.delete(copy)
+    db.session.commit()
+    cache_delete_prefix("/api/book_copies")
+    cache_delete_prefix("/api/v2/book-copies")
+    
+    return '', 204
 
 # ==========================================
 # BORROWING APIs

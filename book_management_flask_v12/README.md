@@ -1,4 +1,171 @@
-# Book Management System v10 - With HTTP-only Cookie Token Management
+# Book Management System v12 - API Versioning & Deprecation Strategy
+
+## What's New in v12
+
+### API Versioning Implementation
+Version 12 demonstrates **production-ready API versioning strategy** with:
+
+-**URL Path Versioning**: Clear separation between v1 and v2
+-**Deprecation Headers**: RFC 8594 compliant deprecation notices
+-**Migration Guide**: Complete documentation for developers
+-**Backward Compatibility**: Both versions coexist during transition
+-**Enhanced v2 API**: Improved features and developer experience
+
+### Important: Book Copy API Deprecation
+
+**Version 1 endpoints are DEPRECATED:**
+- `/api/book_copies` → Use `/api/v2/book-copies`
+- Sunset date: **June 1, 2026**
+- See [DEPRECATION_NOTICE.md](./DEPRECATION_NOTICE.md) for details
+
+## API Versions
+
+### Version 1 (Deprecated) ⚠️
+
+```http
+GET    /api/book_copies
+POST   /api/book_copies
+PUT    /api/book_copies/{id}
+DELETE /api/book_copies/{id}
+```
+
+**Status**: Deprecated since November 13, 2025  
+**Sunset**: June 1, 2026  
+**Response headers include**:
+```http
+Deprecation: true
+Sunset: 2026-06-01
+Link: </api/v2/book-copies>; rel="successor-version"
+Warning: 299 - "This API version is deprecated. Please migrate to v2"
+```
+
+### Version 2 (Current)
+```http
+GET    /api/v2/book-copies
+GET    /api/v2/book-copies/{id}
+POST   /api/v2/book-copies
+PUT    /api/v2/book-copies/{id}
+PATCH  /api/v2/book-copies/{id}
+DELETE /api/v2/book-copies/{id}
+```
+
+**Enhancements**:
+- 🚀 Embedded book title information (fewer API calls)
+- 🔍 Advanced filtering: `?available=true&condition=Good&search=BC`
+- 📊 Real-time borrowing status included
+- 💬 Structured error responses with codes
+- 📝 RESTful naming (kebab-case)
+- ✨ PATCH support for partial updates
+- 📍 Location headers in POST responses
+
+## Quick Comparison
+
+| Feature | v1 (Deprecated) | v2 (Current) |
+|---------|----------------|--------------|
+| Endpoint | `/api/book_copies` | `/api/v2/book-copies` |
+| Naming | snake_case | camelCase |
+| Response | `{items, page}` | `{data, pagination, meta}` |
+| Embedded data | No |Yes (book titles) |
+| Filtering | Limited |Advanced |
+| Error format | Simple |Structured |
+| GET single | No |Yes |
+| PATCH method | No |Yes |
+| Status info | No |Borrowing status |
+
+## Example Responses
+
+### v1 Response (Deprecated)
+```json
+{
+  "items": [{
+    "id": 1,
+    "book_title_id": 5,
+    "barcode": "BC001",
+    "available": true,
+    "condition": "Good"
+  }],
+  "page": {"page": 1, "size": 10}
+}
+```
+
+### v2 Response (Current)
+```json
+{
+  "data": [{
+    "id": 1,
+    "bookTitleId": 5,
+    "barcode": "BC001",
+    "available": true,
+    "condition": "Good",
+    "bookTitle": {
+      "id": 5,
+      "title": "Clean Code",
+      "author": "Robert Martin"
+    },
+    "borrowingStatus": {
+      "isBorrowed": false,
+      "currentBorrowingId": null,
+      "dueDate": null
+    }
+  }],
+  "pagination": {"page": 1, "size": 10},
+  "meta": {"version": "2.0"}
+}
+```
+
+## Migration Guide
+
+**📚 Complete documentation:**
+- [API_VERSIONING.md](./API_VERSIONING.md) - Full migration guide
+- [DEPRECATION_NOTICE.md](./DEPRECATION_NOTICE.md) - Important notices
+
+**Quick migration steps:**
+
+1. **Update URLs**: 
+   ```javascript
+   // Before
+   fetch('/api/book_copies')
+   
+   // After
+   fetch('/api/v2/book-copies')
+   ```
+
+2. **Update field names**:
+   ```javascript
+   // Before
+   { book_title_id: 5 }
+   
+   // After
+   { bookTitleId: 5 }
+   ```
+
+3. **Update response parsing**:
+   ```javascript
+   // Before
+   data.items[0]
+   
+   // After
+   data.data[0]
+   ```
+
+## Testing
+
+### Run API Versioning Tests
+
+```bash
+# Make sure server is running on port 5000
+python -m book_management_flask_v12.run
+
+# In another terminal, run tests
+python -m book_management_flask_v12.tests.test_api_versioning
+```
+
+This test suite demonstrates:
+-v1 deprecation headers
+-v2 enhanced features
+-Response format differences
+-API call efficiency comparison
+-Error handling improvements
 
 ## Authentication & Authorization Flow
 
