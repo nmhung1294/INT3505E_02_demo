@@ -310,33 +310,172 @@ def get_current_user(current_user):
     }), 200
 
 # ==========================================
-# BOOK TITLE APIs
+# BOOK TITLE APIs - HEADER VERSIONING
 # ==========================================
+# Strategy: Version specified via Accept or X-API-Version header
+# Default (no header): v1 (legacy format)
+# Accept: application/vnd.library.v1+json OR X-API-Version: 1 -> v1
+# Accept: application/vnd.library.v2+json OR X-API-Version: 2 -> v2
+# Migration guide: See API_VERSIONING.md
+
+def get_book_title_version():
+    """Get API version from Accept header or X-API-Version header (default: 1)"""
+    # Check X-API-Version header first (simpler)
+    version_header = request.headers.get('X-API-Version')
+    if version_header:
+        try:
+            return int(version_header)
+        except (ValueError, TypeError):
+            pass
+    
+    # Check Accept header for vendor media type
+    accept = request.headers.get('Accept', '')
+    if 'application/vnd.library.v2+json' in accept:
+        return 2
+    elif 'application/vnd.library.v1+json' in accept:
+        return 1
+    
+    # Default to v1
+    return 1
+
+def serialize_book_title_v1(b):
+    """Serialize book title in v1 format (legacy)"""
+    return {
+        "id": b.id,
+        "title": b.title,
+        "author": b.author,
+        "publisher": b.publisher,
+        "year": b.year,
+        "category": b.category,
+        "copies_count": len(b.copies),
+    }
+
+def serialize_book_title_v2(b):
+    """Serialize book title in v2 format (enhanced with statistics)"""
+    copies = b.copies
+    available_count = sum(1 for c in copies if c.available)
+    borrowed_count = len(copies) - available_count
+    
+    # Count by condition
+    condition_stats = {"Good": 0, "Damaged": 0, "Lost": 0}
+    for c in copies:
+        condition_stats[c.condition] = condition_stats.get(c.condition, 0) + 1
+    
+    return {
+        "id": b.id,
+        "title": b.title,
+        "author": b.author,
+        "publisher": b.publisher,
+        "year": b.year,
+        "category": b.category,
+        "statistics": {
+            "totalCopies": len(copies),
+            "availableCopies": available_count,
+            "borrowedCopies": borrowed_count,
+            "conditionBreakdown": condition_stats
+        },
+        "metadata": {
+            "hasAvailableCopies": available_count > 0,
+            "allCopiesBorrowed": borrowed_count == len(copies) and len(copies) > 0
+        }
+    }
+
 @api.route("/book_titles", methods=["GET"])
 @token_required
 def list_book_titles(current_user):
-    key = make_cache_key(request.path, request.args)
+    """
+    Get list of book titles with version support via header
+    
+    Headers:
+    - X-API-Version: 1 or 2 (simple version header)
+    - Accept: application/vnd.library.v1+json or application/vnd.library.v2+json (vendor media type)
+    
+    Query Parameters:
+    - page: Page number (default: 1)
+    - size: Items per page (default: 10)
+    - category: Filter by category (v2 only)
+    - search: Search in title or author (v2 only)
+    
+    Version 1 (default):
+    - Legacy format with snake_case
+    - Basic information with simple copies_count
+    - Response: {items: [...], page: {...}}
+    
+    Version 2 (X-API-Version: 2 or Accept: application/vnd.library.v2+json):
+    - Enhanced format with camelCase
+    - Detailed statistics (available, borrowed, condition breakdown)
+    - Better metadata about availability
+    - Advanced filtering support
+    - Response: {data: [...], pagination: {...}, meta: {...}}
+    
+    Examples:
+    - GET /api/book_titles (uses v1)
+    - GET /api/book_titles with header "X-API-Version: 2" (uses v2)
+    - GET /api/book_titles with header "Accept: application/vnd.library.v2+json" (uses v2)
+    - GET /api/book_titles?category=Fiction with header "X-API-Version: 2" (v2 with filter)
+    """
+    version = get_book_title_version()
+    
+    key = make_cache_key(request.path + f"_v{version}", request.args)
     cached = cache_get(key)
     if cached:
-        return jsonify(cached)
+        response = jsonify(cached)
+        response.headers['X-API-Version'] = str(version)
+        return response
 
     query = BookTitle.query
+    
+    # v2 specific filters
+    if version >= 2:
+        # Filter by category
+        category_filter = request.args.get('category')
+        if category_filter:
+            query = query.filter_by(category=category_filter)
+        
+        # Search in title or author
+        search = request.args.get('search')
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.filter(
+                db.or_(
+                    BookTitle.title.like(search_pattern),
+                    BookTitle.author.like(search_pattern)
+                )
+            )
+    
     items, page_info = paginate(query)
-    data = [
-        {
-            "id": b.id,
-            "title": b.title,
-            "author": b.author,
-            "publisher": b.publisher,
-            "year": b.year,
-            "category": b.category,
-            "copies_count": len(b.copies),
+    
+    # Version 1: Legacy format
+    if version == 1:
+        data = [serialize_book_title_v1(b) for b in items]
+        result = {"items": data, "page": page_info}
+        cache_set(key, result)
+        response = jsonify(result)
+        response.headers['X-API-Version'] = '1'
+        response.headers['X-Available-Versions'] = '1, 2'
+        return response
+    
+    # Version 2: Enhanced format
+    elif version >= 2:
+        data = [serialize_book_title_v2(b) for b in items]
+        result = {
+            "data": data,
+            "pagination": page_info,
+            "meta": {
+                "version": "2.0",
+                "features": [
+                    "detailed_statistics",
+                    "condition_breakdown",
+                    "availability_metadata",
+                    "advanced_filtering"
+                ]
+            }
         }
-        for b in items
-    ]
-    response = {"items": data, "page": page_info}
-    cache_set(key, response)
-    return jsonify(response)
+        cache_set(key, result)
+        response = jsonify(result)
+        response.headers['X-API-Version'] = '2'
+        response.headers['Content-Type'] = 'application/vnd.library.v2+json'
+        return response
 
 @api.route("/book_titles", methods=["POST"])
 @token_required
@@ -799,69 +938,310 @@ def delete_book_copy_v2(current_user, id):
     return '', 204
 
 # ==========================================
-# BORROWING APIs
+# BORROWING APIs - QUERY PARAMETER VERSIONING
 # ==========================================
+# Strategy: Version specified via ?version=2 query parameter
+# Default (no version param or version=1): Legacy format
+# version=2: Enhanced format with embedded data
+# Migration guide: See API_VERSIONING.md
+
+def get_api_version():
+    """Get API version from query parameter (default: 1)"""
+    version = request.args.get('version', '1')
+    try:
+        return int(version)
+    except (ValueError, TypeError):
+        return 1
+
+def serialize_borrowing_v1(b):
+    """Serialize borrowing in v1 format (legacy)"""
+    overdue = (
+        b.due_date and not b.return_date and datetime.utcnow() > b.due_date
+    )
+    days_overdue = (
+        (datetime.utcnow().date() - b.due_date.date()).days
+        if overdue
+        else 0
+    )
+    return {
+        "id": b.id,
+        "book_copy_id": b.book_copy_id,
+        "user_id": b.user_id,
+        "borrow_date": b.borrow_date.isoformat(),
+        "due_date": b.due_date.isoformat() if b.due_date else None,
+        "return_date": b.return_date.isoformat() if b.return_date else None,
+        "fine": b.fine,
+        "overdue": overdue,
+        "days_overdue": days_overdue,
+    }
+
+def serialize_borrowing_v2(b):
+    """Serialize borrowing in v2 format (enhanced with embedded data)"""
+    overdue = (
+        b.due_date and not b.return_date and datetime.utcnow() > b.due_date
+    )
+    days_overdue = (
+        (datetime.utcnow().date() - b.due_date.date()).days
+        if overdue
+        else 0
+    )
+    
+    result = {
+        "id": b.id,
+        "borrowDate": b.borrow_date.isoformat(),
+        "dueDate": b.due_date.isoformat() if b.due_date else None,
+        "returnDate": b.return_date.isoformat() if b.return_date else None,
+        "fine": b.fine,
+        "status": {
+            "isOverdue": overdue,
+            "daysOverdue": days_overdue,
+            "isReturned": b.return_date is not None
+        }
+    }
+    
+    # Embed book copy information
+    if b.book_copy:
+        result["bookCopy"] = {
+            "id": b.book_copy.id,
+            "barcode": b.book_copy.barcode,
+            "condition": b.book_copy.condition
+        }
+        
+        # Embed book title information
+        if b.book_copy.book_title:
+            result["bookCopy"]["bookTitle"] = {
+                "id": b.book_copy.book_title.id,
+                "title": b.book_copy.book_title.title,
+                "author": b.book_copy.book_title.author,
+                "publisher": b.book_copy.book_title.publisher,
+                "year": b.book_copy.book_title.year
+            }
+    
+    # Embed user information
+    if b.user:
+        result["user"] = {
+            "id": b.user.id,
+            "name": b.user.name,
+            "email": b.user.email
+        }
+    
+    return result
+
 @api.route("/borrowings", methods=["GET"])
 @token_required
 def list_borrowings(current_user):
+    """
+    Get list of borrowings with version support via query parameter
+    
+    Query Parameters:
+    - version: API version (1 or 2, default: 1)
+    - page: Page number (default: 1)
+    - size: Items per page (default: 10)
+    - status: Filter by status (v2 only: active/returned/overdue)
+    - userId: Filter by user ID (v2 only)
+    
+    Version 1 (default):
+    - Legacy format with snake_case
+    - Basic information only
+    - Response: {items: [...], page: {...}}
+    
+    Version 2 (?version=2):
+    - Enhanced format with camelCase
+    - Embedded book copy and user information
+    - Better status information
+    - Response: {data: [...], pagination: {...}, meta: {...}}
+    
+    Examples:
+    - GET /api/borrowings (uses v1)
+    - GET /api/borrowings?version=1 (explicit v1)
+    - GET /api/borrowings?version=2 (uses v2)
+    - GET /api/borrowings?version=2&status=overdue (v2 with filter)
+    """
+    version = get_api_version()
+    
     query = Borrowing.query
+    
+    # v2 specific filters
+    if version >= 2:
+        # Filter by status
+        status_filter = request.args.get('status')
+        if status_filter == 'active':
+            query = query.filter_by(return_date=None)
+        elif status_filter == 'returned':
+            query = query.filter(Borrowing.return_date.isnot(None))
+        elif status_filter == 'overdue':
+            query = query.filter(
+                Borrowing.return_date.is_(None),
+                Borrowing.due_date < datetime.utcnow()
+            )
+        
+        # Filter by user ID
+        user_id_filter = request.args.get('userId')
+        if user_id_filter:
+            query = query.filter_by(user_id=int(user_id_filter))
+    
     items, page_info = paginate(query)
-    data = []
-    for b in items:
-        overdue = (
-            b.due_date and not b.return_date and datetime.utcnow() > b.due_date
-        )
-        days_overdue = (
-            (datetime.utcnow().date() - b.due_date.date()).days
-            if overdue
-            else 0
-        )
-        data.append(
-            {
-                "id": b.id,
-                "book_copy_id": b.book_copy_id,
-                "user_id": b.user_id,
-                "borrow_date": b.borrow_date.isoformat(),
-                "due_date": b.due_date.isoformat() if b.due_date else None,
-                "return_date": b.return_date.isoformat()
-                if b.return_date
-                else None,
-                "fine": b.fine,
-                "overdue": overdue,
-                "days_overdue": days_overdue,
+    
+    # Version 1: Legacy format
+    if version == 1:
+        data = [serialize_borrowing_v1(b) for b in items]
+        response = jsonify({"items": data, "page": page_info})
+        # Add hint header for v2
+        response.headers['X-API-Version'] = '1'
+        response.headers['X-Available-Versions'] = '1, 2'
+        response.headers['Link'] = '</api/borrowings?version=2>; rel="alternate"; title="Version 2"'
+        return response
+    
+    # Version 2: Enhanced format
+    elif version >= 2:
+        data = [serialize_borrowing_v2(b) for b in items]
+        return jsonify({
+            "data": data,
+            "pagination": page_info,
+            "meta": {
+                "version": "2.0",
+                "features": [
+                    "embedded_book_copy",
+                    "embedded_user",
+                    "enhanced_status",
+                    "advanced_filtering"
+                ]
             }
-        )
-    return jsonify({"items": data, "page": page_info})
+        })
 
 @api.route("/borrowings", methods=["POST"])
 @token_required
 def borrow_book(current_user):
+    """
+    Create a new borrowing record
+    
+    Supports both v1 and v2 input formats based on query parameter
+    
+    Version 1 (default):
+    Request: {"book_copy_id": int, "due_date": string}
+    Response: {"message": string, "id": int}
+    
+    Version 2 (?version=2):
+    Request: {"bookCopyId": int, "dueDate": string}
+    Response: {"data": {...}, "meta": {...}}
+    """
     if not current_user:
         abort(401, "Authentication required")
+    
+    version = get_api_version()
     data = request.get_json() or {}
-    copy = BookCopy.query.get_or_404(data.get("book_copy_id"))
+    
+    # Handle different field names based on version
+    if version >= 2:
+        book_copy_id = data.get("bookCopyId")
+        due_date = data.get("dueDate")
+        
+        # Validate v2
+        if not book_copy_id:
+            return jsonify({
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Missing required field: bookCopyId"
+                }
+            }), 400
+    else:
+        book_copy_id = data.get("book_copy_id")
+        due_date = data.get("due_date")
+        
+        # Validate v1
+        if not book_copy_id:
+            abort(400, "Missing book_copy_id")
+    
+    copy = BookCopy.query.get_or_404(book_copy_id)
+    
     if not copy.available:
-        abort(400, "Book not available")
-    due_date = data.get("due_date")
+        if version >= 2:
+            return jsonify({
+                "error": {
+                    "code": "BOOK_NOT_AVAILABLE",
+                    "message": "Book copy is not available for borrowing",
+                    "details": {
+                        "bookCopyId": book_copy_id,
+                        "barcode": copy.barcode
+                    }
+                }
+            }), 400
+        else:
+            abort(400, "Book not available")
+    
     due_dt = datetime.fromisoformat(due_date) if due_date else None
     borrow = Borrowing(book_copy_id=copy.id, user_id=current_user.id, due_date=due_dt)
     copy.available = False
     db.session.add(borrow)
     db.session.commit()
-    return jsonify({"message": "Book borrowed", "id": borrow.id}), 201
+    
+    # v1 response
+    if version == 1:
+        return jsonify({"message": "Book borrowed", "id": borrow.id}), 201
+    
+    # v2 response
+    else:
+        response = jsonify({
+            "data": serialize_borrowing_v2(borrow),
+            "meta": {"version": "2.0"}
+        })
+        response.status_code = 201
+        response.headers['Location'] = f'/api/borrowings/{borrow.id}'
+        return response
 
 @api.route("/borrowings/<int:id>/return", methods=["POST"])
 @token_required
 def return_book(current_user, id):
+    """
+    Return a borrowed book
+    
+    Supports both v1 and v2 response formats based on query parameter
+    
+    Version 1 (default):
+    Response: {"message": string, "fine": int}
+    
+    Version 2 (?version=2):
+    Response: {"data": {...}, "meta": {...}}
+    """
+    version = get_api_version()
+    
     b = Borrowing.query.get_or_404(id)
+    
     if b.return_date:
-        abort(400, "Already returned")
+        if version >= 2:
+            return jsonify({
+                "error": {
+                    "code": "ALREADY_RETURNED",
+                    "message": "This book has already been returned",
+                    "details": {
+                        "borrowingId": id,
+                        "returnDate": b.return_date.isoformat()
+                    }
+                }
+            }), 400
+        else:
+            abort(400, "Already returned")
+    
     b.return_date = datetime.utcnow()
     fine_per_day = current_app.config.get("LIBRARY_FINE_PER_DAY", 5000)
     if b.due_date and b.return_date > b.due_date:
         days = (b.return_date.date() - b.due_date.date()).days
         b.fine = days * fine_per_day
+    
     copy = BookCopy.query.get(b.book_copy_id)
     copy.available = True
     db.session.commit()
-    return jsonify({"message": "Book returned", "fine": b.fine})
+    
+    # v1 response
+    if version == 1:
+        return jsonify({"message": "Book returned", "fine": b.fine})
+    
+    # v2 response
+    else:
+        return jsonify({
+            "data": serialize_borrowing_v2(b),
+            "meta": {
+                "version": "2.0",
+                "action": "returned"
+            }
+        })
