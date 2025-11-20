@@ -1,0 +1,221 @@
+{
+  "info": {
+    "name": "Book Management v10 - Automated Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "bmv10-collection"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5000/api" },
+    { "key": "timestamp", "value": "" },
+    { "key": "email", "value": "" },
+    { "key": "token", "value": "" },
+    { "key": "book_title_id", "value": "" },
+    { "key": "book_copy_id", "value": "" },
+    { "key": "user_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 - Register user",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// set a unique timestamp and email",
+              "var ts = new Date().getTime();",
+              "pm.variables.set('timestamp', ts);",
+              "pm.variables.set('email', 'test+' + ts + '@example.com');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Register returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "// save created user id if present",
+              "try {",
+              "  var json = pm.response.json();",
+              "  if (json && json.id) pm.environment.set('user_id', json.id);",
+              "} catch (e) {}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test User {{timestamp}}\",\n  \"email\": \"{{email}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2 - Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Login returns 200 and token/cookie', function () {",
+              "    pm.response.to.have.status(200);",
+              "    var hasTokenInBody = false;",
+              "    try {",
+              "        var j = pm.response.json();",
+              "        if (j && j.token) hasTokenInBody = true;",
+              "    } catch(e) {}",
+              "    var sc = pm.response.headers.get('set-cookie') || pm.response.headers.get('Set-Cookie');",
+              "    var hasCookie = !!sc;",
+              "    pm.expect(hasTokenInBody || hasCookie).to.be.true;",
+              "});",
+              "// store token from body or Set-Cookie into environment variable 'token' (Bearer ...)",
+              "try {",
+              "  var j = pm.response.json();",
+              "  if (j && j.token) pm.environment.set('token', 'Bearer ' + j.token);",
+              "} catch (e) {}",
+              "if (!pm.environment.get('token')) {",
+              "  var sc = pm.response.headers.get('set-cookie') || pm.response.headers.get('Set-Cookie');",
+              "  if (sc) {",
+              "    var m = sc.match(/auth_token=([^;]+)/);",
+              "    if (m && m[1]) pm.environment.set('token', 'Bearer ' + m[1]);",
+              "  }",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3 - Create book title",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Create book title returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "try {",
+              "  var json = pm.response.json();",
+              "  if (json && json.id) pm.environment.set('book_title_id', json.id);",
+              "} catch (e) {}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "{{token}}" }
+        ],
+        "url": "{{base_url}}/book_titles",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Automated Test Book {{timestamp}}\",\n  \"author\": \"Test Author\",\n  \"publisher\": \"UnitTestPub\",\n  \"year\": 2025\n}"
+        }
+      }
+    },
+    {
+      "name": "4 - Create book copy",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// ensure a barcode unique value",
+              "var barcode = 'BC-' + new Date().getTime();",
+              "pm.variables.set('barcode', barcode);",
+              "// ensure book_title_id exists",
+              "if (!pm.environment.get('book_title_id')) {",
+              "  console.warn('book_title_id missing before create copy');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Create book copy returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "try {",
+              "  var json = pm.response.json();",
+              "  if (json && json.id) pm.environment.set('book_copy_id', json.id);",
+              "} catch (e) {}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "{{token}}" }
+        ],
+        "url": "{{base_url}}/book_copies",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"book_title_id\": {{book_title_id}},\n  \"barcode\": \"{{barcode}}\",\n  \"available\": true\n}"
+        }
+      }
+    },
+    {
+      "name": "5 - Borrow book copy",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Borrowing returns 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "try {",
+              "  var json = pm.response.json();",
+              "  // basic shape check",
+              "  if (json) pm.expect(json).to.have.property('book_copy_id');",
+              "} catch (e) {}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "{{token}}" }
+        ],
+        "url": "{{base_url}}/borrowings",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"book_copy_id\": {{book_copy_id}},\n  \"user_id\": {{user_id}}\n}"
+        }
+      }
+    }
+  ]
+}
