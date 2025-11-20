@@ -5,6 +5,7 @@ import hashlib
 import os
 import jwt
 import requests
+import sys
 from functools import wraps
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, request, abort, current_app, make_response, render_template, redirect
@@ -12,10 +13,19 @@ from urllib.parse import urlencode
 from sqlalchemy.exc import IntegrityError
 from . import db
 from .models import BookTitle, BookCopy, User, Borrowing
+from .logging_config import get_logger, log_request, log_db_operation, log_cache_operation
+from .metrics import (
+    record_cache_hit, record_cache_miss, record_cache_set, record_cache_delete,
+    update_cache_size, record_book_borrowed, record_book_returned,
+    update_active_borrowings, record_user_registration, record_auth_attempt
+)
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
 SECRET_KEY = os.getenv("SECRET_KEY", "nmhung_secret")
+
+# Get logger instance
+logger = get_logger()
 
 # ==========================================
 # SIMPLE IN-MEMORY CACHE
@@ -26,19 +36,38 @@ CACHE_TTL = 60  # 1 minute
 def cache_get(key):
     entry = CACHE.get(key)
     if not entry:
+        record_cache_miss()
+        log_cache_operation(logger, 'GET', key, hit=False)
         return None
     if time.time() - entry["time"] > entry["ttl"]:
         del CACHE[key]
+        record_cache_miss()
+        log_cache_operation(logger, 'GET', key, hit=False)
         return None
+    record_cache_hit()
+    log_cache_operation(logger, 'GET', key, hit=True)
     return entry["data"]
 
 def cache_set(key, value, ttl=CACHE_TTL):
     CACHE[key] = {"data": value, "time": time.time(), "ttl": ttl}
+    record_cache_set()
+    log_cache_operation(logger, 'SET', key)
+    # Update cache size metrics
+    cache_size_bytes = sys.getsizeof(CACHE)
+    update_cache_size(cache_size_bytes, len(CACHE))
 
 def cache_delete_prefix(prefix):
+    deleted_count = 0
     for key in list(CACHE.keys()):
         if key.startswith(prefix):
             del CACHE[key]
+            deleted_count += 1
+    if deleted_count > 0:
+        record_cache_delete()
+        log_cache_operation(logger, 'DELETE', f"{prefix}*")
+        # Update cache size metrics
+        cache_size_bytes = sys.getsizeof(CACHE)
+        update_cache_size(cache_size_bytes, len(CACHE))
 
 def make_cache_key(path, params=None):
     params = json.dumps(params or {}, sort_keys=True)
@@ -145,30 +174,53 @@ def paginate(query):
 def register():
     data = request.get_json() or {}
     if "name" not in data or "email" not in data:
+        logger.warning("Registration attempt with missing fields", extra={'data': data})
         abort(400, "Missing name or email")
     if User.query.filter_by(email=data["email"]).first():
+        logger.warning(f"Registration attempt with existing email: {data['email']}")
         abort(400, "Email already exists")
-    u = User(name=data["name"], email=data["email"])
-    db.session.add(u)
-    db.session.commit()
-    return jsonify({"message": "User created", "id": u.id}), 201
+    
+    try:
+        u = User(name=data["name"], email=data["email"])
+        db.session.add(u)
+        db.session.commit()
+        
+        record_user_registration()
+        log_db_operation(logger, 'CREATE', 'user', u.id, success=True)
+        logger.info(f"New user registered: {u.email}", extra={'user_id': u.id})
+        
+        return jsonify({"message": "User created", "id": u.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        log_db_operation(logger, 'CREATE', 'user', None, success=False, error=str(e))
+        logger.error(f"Failed to register user: {str(e)}", exc_info=True)
+        abort(500, "Failed to create user")
 
 @api.route("/auth/login", methods=["POST"])
 def login():
     data = request.get_json() or {}
-    user = User.query.filter_by(email=data.get("email")).first()
-    if not user:
-        abort(401, "Invalid email")
-    token = jwt.encode(
-        {"id": user.id, "exp": datetime.utcnow() + timedelta(hours=2)},
-        SECRET_KEY,
-        algorithm="HS256",
-    )
+    email = data.get("email")
     
-    # Set token in HTTP-only cookie
-    response = make_response(jsonify({
-        "message": "Login successful",
-        "user": {"id": user.id, "name": user.name, "email": user.email}
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        record_auth_attempt(success=False)
+        logger.warning(f"Failed login attempt for email: {email}")
+        abort(401, "Invalid email")
+    
+    try:
+        token = jwt.encode(
+            {"id": user.id, "exp": datetime.utcnow() + timedelta(hours=2)},
+            SECRET_KEY,
+            algorithm="HS256",
+        )
+        
+        record_auth_attempt(success=True)
+        logger.info(f"User logged in: {user.email}", extra={'user_id': user.id})
+        
+        # Set token in HTTP-only cookie
+        response = make_response(jsonify({
+            "message": "Login successful",
+            "user": {"id": user.id, "name": user.name, "email": user.email}
     }), 200)
     
     # Set HTTP-only cookie with security flags
@@ -1155,6 +1207,8 @@ def borrow_book(current_user):
     copy = BookCopy.query.get_or_404(book_copy_id)
     
     if not copy.available:
+        logger.warning(f"Attempt to borrow unavailable book copy", 
+                      extra={'user_id': current_user.id, 'book_copy_id': book_copy_id})
         if version >= 2:
             return jsonify({
                 "error": {
@@ -1169,11 +1223,27 @@ def borrow_book(current_user):
         else:
             abort(400, "Book not available")
     
-    due_dt = datetime.fromisoformat(due_date) if due_date else None
-    borrow = Borrowing(book_copy_id=copy.id, user_id=current_user.id, due_date=due_dt)
-    copy.available = False
-    db.session.add(borrow)
-    db.session.commit()
+    try:
+        due_dt = datetime.fromisoformat(due_date) if due_date else None
+        borrow = Borrowing(book_copy_id=copy.id, user_id=current_user.id, due_date=due_dt)
+        copy.available = False
+        db.session.add(borrow)
+        db.session.commit()
+        
+        # Record metrics and log
+        record_book_borrowed()
+        active_count = Borrowing.query.filter_by(return_date=None).count()
+        update_active_borrowings(active_count)
+        log_db_operation(logger, 'CREATE', 'borrowing', borrow.id, success=True)
+        logger.info(f"Book borrowed by user", 
+                   extra={'user_id': current_user.id, 'borrowing_id': borrow.id, 
+                         'book_copy_id': copy.id, 'due_date': due_date})
+    except Exception as e:
+        db.session.rollback()
+        log_db_operation(logger, 'CREATE', 'borrowing', None, success=False, error=str(e))
+        logger.error(f"Failed to create borrowing: {str(e)}", 
+                    extra={'user_id': current_user.id, 'book_copy_id': book_copy_id}, exc_info=True)
+        abort(500, "Failed to borrow book")
     
     # v1 response
     if version == 1:
@@ -1208,6 +1278,8 @@ def return_book(current_user, id):
     b = Borrowing.query.get_or_404(id)
     
     if b.return_date:
+        logger.warning(f"Attempt to return already returned book", 
+                      extra={'user_id': current_user.id, 'borrowing_id': id})
         if version >= 2:
             return jsonify({
                 "error": {
@@ -1222,15 +1294,31 @@ def return_book(current_user, id):
         else:
             abort(400, "Already returned")
     
-    b.return_date = datetime.utcnow()
-    fine_per_day = current_app.config.get("LIBRARY_FINE_PER_DAY", 5000)
-    if b.due_date and b.return_date > b.due_date:
-        days = (b.return_date.date() - b.due_date.date()).days
-        b.fine = days * fine_per_day
-    
-    copy = BookCopy.query.get(b.book_copy_id)
-    copy.available = True
-    db.session.commit()
+    try:
+        b.return_date = datetime.utcnow()
+        fine_per_day = current_app.config.get("LIBRARY_FINE_PER_DAY", 5000)
+        if b.due_date and b.return_date > b.due_date:
+            days = (b.return_date.date() - b.due_date.date()).days
+            b.fine = days * fine_per_day
+        
+        copy = BookCopy.query.get(b.book_copy_id)
+        copy.available = True
+        db.session.commit()
+        
+        # Record metrics and log
+        record_book_returned()
+        active_count = Borrowing.query.filter_by(return_date=None).count()
+        update_active_borrowings(active_count)
+        log_db_operation(logger, 'UPDATE', 'borrowing', id, success=True)
+        logger.info(f"Book returned by user", 
+                   extra={'user_id': current_user.id, 'borrowing_id': id, 
+                         'fine': b.fine, 'overdue_days': days if b.fine else 0})
+    except Exception as e:
+        db.session.rollback()
+        log_db_operation(logger, 'UPDATE', 'borrowing', id, success=False, error=str(e))
+        logger.error(f"Failed to return book: {str(e)}", 
+                    extra={'user_id': current_user.id, 'borrowing_id': id}, exc_info=True)
+        abort(500, "Failed to return book")
     
     # v1 response
     if version == 1:

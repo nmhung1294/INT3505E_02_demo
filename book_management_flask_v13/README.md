@@ -1,22 +1,36 @@
-# Book Management System v12 - API Versioning & Deprecation Strategy
+# Book Management System v13 - Logging & Monitoring
 
-## What's New in v12
+## What's New in v13
 
-### API Versioning Implementation
-Version 12 demonstrates **production-ready API versioning strategy** with:
+### Logging & Monitoring Implementation
+Version 13 adds **production-grade logging and monitoring** with:
 
--**URL Path Versioning**: Clear separation between v1 and v2
--**Deprecation Headers**: RFC 8594 compliant deprecation notices
--**Migration Guide**: Complete documentation for developers
--**Backward Compatibility**: Both versions coexist during transition
--**Enhanced v2 API**: Improved features and developer experience
+- **Structured Logging**: JSON format logs with Python's logging module
+- **Prometheus Metrics**: HTTP, database, cache, and business metrics
+- **Health Checks**: `/health` endpoint for service monitoring
+- **Request Tracking**: Automatic tracking of all HTTP requests
+- **Performance Monitoring**: Response time histograms and error tracking
 
-### Important: Book Copy API Deprecation
+See [LOGGING_MONITORING.md](./LOGGING_MONITORING.md) for complete documentation.
 
-**Version 1 endpoints are DEPRECATED:**
-- `/api/book_copies` → Use `/api/v2/book-copies`
-- Sunset date: **June 1, 2026**
-- See [DEPRECATION_NOTICE.md](./DEPRECATION_NOTICE.md) for details
+### Quick Start with Monitoring
+
+```bash
+# Install dependencies (includes prometheus-client)
+pip install -r requirements.txt
+
+# Run the application
+python -m book_management_flask_v13.run
+
+# View metrics
+curl http://localhost:5000/metrics
+
+# View health status
+curl http://localhost:5000/health
+
+# Check logs
+cat logs/book_management.log
+```
 
 ## API Versions
 

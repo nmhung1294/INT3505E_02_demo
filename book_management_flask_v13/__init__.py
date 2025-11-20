@@ -1,5 +1,5 @@
 
-from flask import Flask, render_template, send_from_directory
+from flask import Flask, render_template, send_from_directory, g
 from flask_sqlalchemy import SQLAlchemy
 from flasgger import Swagger  # Thêm import này
 from dotenv import load_dotenv
@@ -16,6 +16,23 @@ app = Flask(__name__,
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///library.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = 'supersecretkey'
+
+# Initialize logging
+from .logging_config import setup_logging
+logger = setup_logging(
+    app_name='book_management',
+    log_level=os.getenv('LOG_LEVEL', 'INFO'),
+    log_dir=os.path.join(package_dir, 'logs')
+)
+
+# Initialize Prometheus metrics
+from .metrics import (
+    initialize_app_info, 
+    track_request, 
+    finalize_request_metrics,
+    get_metrics,
+    get_metrics_content_type
+)
 
 # Authentication configuration (switch between 'jwt' and 'oauth2')
 # - AUTH_MODE: 'jwt' (default) or 'oauth2'
@@ -80,6 +97,35 @@ from .models import BookTitle, BookCopy, User, Borrowing
 from .api import api as api_blueprint
 
 app.register_blueprint(api_blueprint)
+
+# ==========================================
+# Monitoring Endpoints
+# ==========================================
+@app.route('/metrics')
+def metrics():
+    """Prometheus metrics endpoint"""
+    return get_metrics(), 200, {'Content-Type': get_metrics_content_type()}
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return {'status': 'healthy', 'service': 'book_management_api'}, 200
+
+# ==========================================
+# Request Tracking Middleware
+# ==========================================
+@app.before_request
+def before_request():
+    """Track request start time and increment active requests"""
+    track_request()
+
+@app.after_request
+def after_request(response):
+    """Finalize request metrics"""
+    return finalize_request_metrics(response)
+
+# Initialize app info
+initialize_app_info(version='1.3', environment=os.getenv('ENVIRONMENT', 'development'))
 
 # ==========================================
 # Frontend Routes (HTML pages)

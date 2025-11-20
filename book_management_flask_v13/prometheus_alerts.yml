@@ -1,0 +1,142 @@
+# Prometheus Alerting Rules for Book Management API
+
+groups:
+  - name: book_management_alerts
+    interval: 30s
+    rules:
+      
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(http_errors_total[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: book_management_api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+      
+      # Very high error rate (critical)
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            rate(http_errors_total[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          service: book_management_api
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+      
+      # Slow response time
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: book_management_api
+        annotations:
+          summary: "Slow response time detected"
+          description: "95th percentile response time is {{ $value }}s (threshold: 1s)"
+      
+      # Very slow response time (critical)
+      - alert: VerySlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 3.0
+        for: 2m
+        labels:
+          severity: critical
+          service: book_management_api
+        annotations:
+          summary: "Very slow response time detected"
+          description: "95th percentile response time is {{ $value }}s (threshold: 3s)"
+      
+      # Database errors
+      - alert: DatabaseErrors
+        expr: rate(db_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          service: book_management_api
+        annotations:
+          summary: "Database errors detected"
+          description: "Database error rate is {{ $value }} errors/sec"
+      
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            rate(cache_hits_total[5m])
+            /
+            (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))
+          ) < 0.50
+        for: 10m
+        labels:
+          severity: info
+          service: book_management_api
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 50%)"
+      
+      # High number of authentication failures
+      - alert: HighAuthFailureRate
+        expr: |
+          (
+            rate(auth_attempts_total{status="failure"}[5m])
+            /
+            rate(auth_attempts_total[5m])
+          ) > 0.30
+        for: 5m
+        labels:
+          severity: warning
+          service: book_management_api
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Auth failure rate is {{ $value | humanizePercentage }} (threshold: 30%)"
+      
+      # Service down
+      - alert: ServiceDown
+        expr: up{job="book_management_api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: book_management_api
+        annotations:
+          summary: "Book Management API is down"
+          description: "The API has been unreachable for more than 1 minute"
+      
+      # High request rate (potential DDoS)
+      - alert: HighRequestRate
+        expr: rate(http_requests_total[1m]) > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: book_management_api
+        annotations:
+          summary: "High request rate detected"
+          description: "Request rate is {{ $value }} requests/sec (threshold: 100)"
+      
+      # Too many active borrowings (business metric)
+      - alert: TooManyActiveBorrowings
+        expr: active_borrowings_total > 1000
+        for: 5m
+        labels:
+          severity: info
+          service: book_management_api
+        annotations:
+          summary: "High number of active borrowings"
+          description: "There are {{ $value }} active borrowings (threshold: 1000)"
