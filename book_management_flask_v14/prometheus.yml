@@ -1,0 +1,52 @@
+# Prometheus Configuration for Book Management API
+
+global:
+  scrape_interval: 15s      # How frequently to scrape targets
+  evaluation_interval: 15s  # How frequently to evaluate rules
+  
+  # Attach these labels to any time series or alerts
+  external_labels:
+    monitor: 'book-management-monitor'
+    environment: 'development'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - localhost:9093
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Book Management API
+  - job_name: 'book_management_api'
+    
+    # Override the global default and scrape targets more frequently
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    
+    # Metrics path defaults to '/metrics'
+    metrics_path: '/metrics'
+    
+    # Scheme defaults to 'http'
+    scheme: http
+    
+    static_configs:
+      - targets: ['localhost:5000']
+        labels:
+          service: 'book_management_api'
+          version: '1.3'
+    
+    # Optional: Basic authentication if you protect /metrics
+    # basic_auth:
+    #   username: 'prometheus'
+    #   password: 'secret'
+  
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
