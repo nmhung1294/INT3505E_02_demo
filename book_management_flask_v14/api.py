@@ -19,6 +19,7 @@ from .metrics import (
     update_cache_size, record_book_borrowed, record_book_returned,
     update_active_borrowings, record_user_registration, record_auth_attempt
 )
+from .webhook import send_webhook_notification, EVENT_BOOK_BORROWED, EVENT_BOOK_RETURNED, EVENT_USER_REGISTERED, EVENT_ERROR
 
 api = Blueprint("api", __name__, url_prefix="/api")
 
@@ -188,6 +189,13 @@ def register():
         record_user_registration()
         log_db_operation(logger, 'CREATE', 'user', u.id, success=True)
         logger.info(f"New user registered: {u.email}", extra={'user_id': u.id})
+        
+        # Send webhook notification
+        send_webhook_notification(EVENT_USER_REGISTERED, {
+            'user_id': u.id,
+            'user_name': u.name,
+            'user_email': u.email
+        })
         
         return jsonify({"message": "User created", "id": u.id}), 201
     except Exception as e:
@@ -1238,6 +1246,19 @@ def borrow_book(current_user):
         logger.info(f"Book borrowed by user", 
                    extra={'user_id': current_user.id, 'borrowing_id': borrow.id, 
                          'book_copy_id': copy.id, 'due_date': due_date})
+        
+        # Send webhook notification
+        send_webhook_notification(EVENT_BOOK_BORROWED, {
+            'borrowing_id': borrow.id,
+            'user_id': current_user.id,
+            'user_name': current_user.name,
+            'user_email': current_user.email,
+            'book_copy_id': copy.id,
+            'book_title': copy.book_title.title,
+            'book_author': copy.book_title.author,
+            'borrow_date': borrow.borrow_date.isoformat(),
+            'due_date': borrow.due_date.isoformat() if borrow.due_date else None
+        })
     except Exception as e:
         db.session.rollback()
         log_db_operation(logger, 'CREATE', 'borrowing', None, success=False, error=str(e))
@@ -1313,6 +1334,22 @@ def return_book(current_user, id):
         logger.info(f"Book returned by user", 
                    extra={'user_id': current_user.id, 'borrowing_id': id, 
                          'fine': b.fine, 'overdue_days': days if b.fine else 0})
+        
+        # Send webhook notification
+        send_webhook_notification(EVENT_BOOK_RETURNED, {
+            'borrowing_id': id,
+            'user_id': current_user.id,
+            'user_name': current_user.name,
+            'user_email': current_user.email,
+            'book_copy_id': b.book_copy_id,
+            'book_title': copy.book_title.title,
+            'book_author': copy.book_title.author,
+            'borrow_date': b.borrow_date.isoformat(),
+            'return_date': b.return_date.isoformat(),
+            'due_date': b.due_date.isoformat() if b.due_date else None,
+            'fine': b.fine,
+            'overdue_days': days if b.fine else 0
+        })
     except Exception as e:
         db.session.rollback()
         log_db_operation(logger, 'UPDATE', 'borrowing', id, success=False, error=str(e))

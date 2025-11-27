@@ -202,16 +202,52 @@ def demo_monitoring():
     print("Check logs/ directory for JSON log files")
     print("Visit http://localhost:5000/metrics to see live metrics")
 
+def demo_webhooks():
+    """Demonstrate webhook features"""
+    
+    print_section("Webhook Management")
+    
+    # Get current webhooks
+    print("GET /webhooks")
+    response = requests.get(f"{BASE_URL}/webhooks")
+    print(f"Status: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    print()
+    
+    # Add a webhook (using webhook.site for testing)
+    print("POST /webhooks")
+    webhook_data = {"url": "https://webhook.site/test-endpoint"}
+    response = requests.post(f"{BASE_URL}/webhooks", json=webhook_data)
+    print(f"Status: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    print()
+    
+    # Send test webhook
+    print("POST /webhooks/test")
+    response = requests.post(f"{BASE_URL}/webhooks/test")
+    print(f"Status: {response.status_code}")
+    print(f"Response: {json.dumps(response.json(), indent=2)}")
+    print()
+    
+    print("\nWebhook notifications are sent for:")
+    print("  - book_borrowed: When a book is borrowed")
+    print("  - book_returned: When a book is returned")
+    print("  - user_registered: When a new user registers")
+    print("  - system_health: Test notifications")
+    print("\nAll webhooks are sent asynchronously (non-blocking)")
+    print("Check your webhook.site URL to see the notifications!")
+
 if __name__ == "__main__":
     print("""
 ╔══════════════════════════════════════════════════════════════╗
-║   Book Management System v13 - Logging & Monitoring Demo    ║
+║   Book Management System v14 - Monitoring & Webhook Demo    ║
 ╚══════════════════════════════════════════════════════════════╝
 
 This demo will:
 - Make various API requests to generate logs and metrics
 - Show how to view Prometheus metrics
 - Demonstrate structured logging
+- Test webhook notifications
 
 Make sure the Flask application is running on http://localhost:5000
 Press Ctrl+C to cancel, or Enter to continue...
@@ -222,10 +258,14 @@ Press Ctrl+C to cancel, or Enter to continue...
     except KeyboardInterrupt:
         print("\nDemo cancelled")
         exit(0)
-    
     try:
+        demo_webhooks()
         demo_monitoring()
     except Exception as e:
         print(f"\nError running demo: {e}")
         print("\nMake sure the Flask application is running:")
-        print("  python -m book_management_flask_v13.run")
+        print("  python -m book_management_flask_v14.run")
+        
+        
+        
+        

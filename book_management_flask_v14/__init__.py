@@ -34,6 +34,18 @@ from .metrics import (
     get_metrics_content_type
 )
 
+# Initialize webhook notifications
+from .webhook import get_webhook_notifier
+webhook_notifier = get_webhook_notifier()
+
+# Load webhook URLs from environment
+webhook_urls = os.getenv('WEBHOOK_URLS', '')
+if webhook_urls:
+    for url in webhook_urls.split(','):
+        url = url.strip()
+        if url:
+            webhook_notifier.add_webhook_url(url)
+
 # Authentication configuration (switch between 'jwt' and 'oauth2')
 # - AUTH_MODE: 'jwt' (default) or 'oauth2'
 # - OAUTH2_INTROSPECTION_URL: URL of token introspection endpoint (RFC7662)
@@ -110,6 +122,41 @@ def metrics():
 def health():
     """Health check endpoint"""
     return {'status': 'healthy', 'service': 'book_management_api'}, 200
+
+# ==========================================
+# Webhook Management Endpoints
+# ==========================================
+@app.route('/webhooks', methods=['GET'])
+def get_webhooks():
+    """Get configured webhook URLs"""
+    return {'webhook_urls': webhook_notifier.webhook_urls}, 200
+
+@app.route('/webhooks', methods=['POST'])
+def add_webhook():
+    """Add a webhook URL"""
+    data = request.get_json() or {}
+    url = data.get('url')
+    if not url:
+        return {'error': 'Missing url parameter'}, 400
+    
+    webhook_notifier.add_webhook_url(url)
+    return {'message': 'Webhook URL added', 'url': url}, 201
+
+@app.route('/webhooks/<path:url>', methods=['DELETE'])
+def remove_webhook(url):
+    """Remove a webhook URL"""
+    webhook_notifier.remove_webhook_url(url)
+    return {'message': 'Webhook URL removed', 'url': url}, 200
+
+@app.route('/webhooks/test', methods=['POST'])
+def test_webhook():
+    """Send a test webhook notification"""
+    from .webhook import EVENT_SYSTEM_HEALTH
+    send_webhook_notification(EVENT_SYSTEM_HEALTH, {
+        'message': 'Test webhook notification',
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }, sync=True)
+    return {'message': 'Test webhook sent'}, 200
 
 # ==========================================
 # Request Tracking Middleware
