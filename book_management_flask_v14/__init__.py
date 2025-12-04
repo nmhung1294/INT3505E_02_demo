@@ -179,6 +179,10 @@ initialize_app_info(version='1.3', environment=os.getenv('ENVIRONMENT', 'develop
 # ==========================================
 @app.route('/')
 def index():
+    return render_template('portal.html')
+
+@app.route('/app')
+def app_page():
     return render_template('index.html')
 
 @app.route('/login.html')

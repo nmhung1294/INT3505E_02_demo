@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Portal - Book Management API v14</title>
+    <link rel="stylesheet" href="/static/css/portal.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>Book Management API v14</h1>
+            <div class="nav-links">
+                <a href="#overview">Overview</a>
+                <a href="#quickstart">Quick Start</a>
+                <a href="#endpoints">API Endpoints</a>
+                <a href="#webhooks">Webhooks</a>
+                <a href="/swagger" target="_blank">Swagger UI</a>
+                <a href="/metrics" target="_blank">Metrics</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <section id="overview" class="section">
+            <h2>Overview</h2>
+            <p>Book Management System API with webhook notifications, structured logging, and Prometheus metrics.</p>
+            
+            <div class="info-grid">
+                <div class="info-card">
+                    <h3>Version</h3>
+                    <p>14.0.0</p>
+                </div>
+                <div class="info-card">
+                    <h3>Base URL</h3>
+                    <p><code>http://localhost:5000/api</code></p>
+                </div>
+                <div class="info-card">
+                    <h3>Authentication</h3>
+                    <p>JWT Bearer Token</p>
+                </div>
+                <div class="info-card">
+                    <h3>Format</h3>
+                    <p>JSON</p>
+                </div>
+            </div>
+
+            <div class="features">
+                <h3>Key Features</h3>
+                <ul>
+                    <li>RESTful API with JWT authentication</li>
+                    <li>Webhook notifications for events</li>
+                    <li>Structured logging (JSON format)</li>
+                    <li>Prometheus metrics integration</li>
+                    <li>API versioning (v1 deprecated, v2 current)</li>
+                    <li>In-memory caching with TTL</li>
+                    <li>OAuth2/OIDC support (Google)</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="quickstart" class="section">
+            <h2>Quick Start</h2>
+            
+            <div class="step">
+                <h3>1. Install Dependencies</h3>
+                <pre><code>pip install -r requirements.txt</code></pre>
+            </div>
+
+            <div class="step">
+                <h3>2. Start Server</h3>
+                <pre><code>python -m book_management_flask_v14.run</code></pre>
+            </div>
+
+            <div class="step">
+                <h3>3. Register User</h3>
+                <pre><code>curl -X POST http://localhost:5000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John Doe", "email": "john@example.com"}'</code></pre>
+            </div>
+
+            <div class="step">
+                <h3>4. Login</h3>
+                <pre><code>curl -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com"}'</code></pre>
+                <p class="note">Token saved in HTTP-only cookie or returned in response</p>
+            </div>
+
+            <div class="step">
+                <h3>5. Make API Call</h3>
+                <pre><code>curl http://localhost:5000/api/book_titles \
+  -H "Authorization: Bearer YOUR_TOKEN"</code></pre>
+            </div>
+        </section>
+
+        <section id="endpoints" class="section">
+            <h2>API Endpoints</h2>
+
+            <div class="endpoint-group">
+                <h3>Authentication</h3>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/auth/register</code>
+                    <p>Register new user</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/auth/login</code>
+                    <p>Login and get JWT token</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/auth/logout</code>
+                    <p>Logout user</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/auth/me</code>
+                    <p>Get current user info</p>
+                </div>
+            </div>
+
+            <div class="endpoint-group">
+                <h3>Book Titles</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/book_titles</code>
+                    <p>List all book titles</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/book_titles/{id}</code>
+                    <p>Get book title by ID</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/book_titles</code>
+                    <p>Create new book title</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method put">PUT</span>
+                    <code>/api/book_titles/{id}</code>
+                    <p>Update book title</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <code>/api/book_titles/{id}</code>
+                    <p>Delete book title</p>
+                </div>
+            </div>
+
+            <div class="endpoint-group">
+                <h3>Book Copies (v2)</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/v2/book-copies</code>
+                    <p>List book copies with filters</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/v2/book-copies/{id}</code>
+                    <p>Get book copy by ID</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/v2/book-copies</code>
+                    <p>Create new book copy</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method patch">PATCH</span>
+                    <code>/api/v2/book-copies/{id}</code>
+                    <p>Partial update book copy</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <code>/api/v2/book-copies/{id}</code>
+                    <p>Delete book copy</p>
+                </div>
+            </div>
+
+            <div class="endpoint-group">
+                <h3>Borrowings</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/api/borrowings</code>
+                    <p>List all borrowings</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/borrowings</code>
+                    <p>Borrow a book</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/api/borrowings/{id}/return</code>
+                    <p>Return a book</p>
+                </div>
+            </div>
+
+            <div class="endpoint-group">
+                <h3>Monitoring</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/health</code>
+                    <p>Health check endpoint</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/metrics</code>
+                    <p>Prometheus metrics</p>
+                </div>
+            </div>
+
+            <div class="endpoint-group">
+                <h3>Webhooks</h3>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <code>/webhooks</code>
+                    <p>List webhook URLs</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/webhooks</code>
+                    <p>Add webhook URL</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span>
+                    <code>/webhooks/{url}</code>
+                    <p>Remove webhook URL</p>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <code>/webhooks/test</code>
+                    <p>Send test notification</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="webhooks" class="section">
+            <h2>Webhook Notifications</h2>
+            
+            <div class="webhook-info">
+                <h3>Configuration</h3>
+                <pre><code># Via environment variable
+$env:WEBHOOK_URLS="https://webhook.site/abc123"
+
+# Via API
+curl -X POST http://localhost:5000/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://webhook.site/abc123"}'</code></pre>
+            </div>
+
+            <div class="webhook-events">
+                <h3>Events</h3>
+                
+                <div class="event-card">
+                    <h4>book_borrowed</h4>
+                    <p>Triggered when user borrows a book</p>
+                    <pre><code>{
+  "timestamp": "2025-12-04T10:30:00Z",
+  "event_type": "book_borrowed",
+  "service": "book_management_api",
+  "version": "v14",
+  "data": {
+    "borrowing_id": 123,
+    "user_id": 45,
+    "user_name": "John Doe",
+    "book_title": "Clean Code",
+    "due_date": "2025-12-18T10:30:00"
+  }
+}</code></pre>
+                </div>
+
+                <div class="event-card">
+                    <h4>book_returned</h4>
+                    <p>Triggered when user returns a book</p>
+                    <pre><code>{
+  "timestamp": "2025-12-04T14:30:00Z",
+  "event_type": "book_returned",
+  "service": "book_management_api",
+  "version": "v14",
+  "data": {
+    "borrowing_id": 123,
+    "user_id": 45,
+    "fine": 0.0,
+    "overdue_days": 0
+  }
+}</code></pre>
+                </div>
+
+                <div class="event-card">
+                    <h4>user_registered</h4>
+                    <p>Triggered when new user registers</p>
+                    <pre><code>{
+  "timestamp": "2025-12-04T09:00:00Z",
+  "event_type": "user_registered",
+  "service": "book_management_api",
+  "version": "v14",
+  "data": {
+    "user_id": 45,
+    "user_name": "John Doe",
+    "user_email": "john@example.com"
+  }
+}</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="examples" class="section">
+            <h2>Code Examples</h2>
+
+            <div class="example">
+                <h3>Python</h3>
+                <pre><code>import requests
+
+# Login
+response = requests.post('http://localhost:5000/api/auth/login',
+    json={'email': 'john@example.com'})
+token = response.json()['token']
+
+# Get book titles
+headers = {'Authorization': f'Bearer {token}'}
+response = requests.get('http://localhost:5000/api/book_titles',
+    headers=headers)
+books = response.json()
+print(books)</code></pre>
+            </div>
+
+            <div class="example">
+                <h3>JavaScript</h3>
+                <pre><code>// Login
+const loginResponse = await fetch('http://localhost:5000/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'john@example.com' })
+});
+const { token } = await loginResponse.json();
+
+// Get book titles
+const booksResponse = await fetch('http://localhost:5000/api/book_titles', {
+  headers: { 'Authorization': `Bearer ${token}` }
+});
+const books = await booksResponse.json();
+console.log(books);</code></pre>
+            </div>
+
+            <div class="example">
+                <h3>cURL</h3>
+                <pre><code># Create book title
+curl -X POST http://localhost:5000/api/book_titles \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Clean Code",
+    "author": "Robert Martin",
+    "publisher": "Prentice Hall",
+    "year": 2008
+  }'</code></pre>
+            </div>
+        </section>
+
+        <section id="testing" class="section">
+            <h2>Testing</h2>
+            
+            <div class="test-tools">
+                <div class="tool">
+                    <h3>Swagger UI</h3>
+                    <p>Interactive API documentation</p>
+                    <a href="/swagger" target="_blank" class="btn">Open Swagger UI</a>
+                </div>
+
+                <div class="tool">
+                    <h3>Health Check</h3>
+                    <p>Verify service status</p>
+                    <a href="/health" target="_blank" class="btn">Check Health</a>
+                </div>
+
+                <div class="tool">
+                    <h3>Metrics</h3>
+                    <p>Prometheus metrics endpoint</p>
+                    <a href="/metrics" target="_blank" class="btn">View Metrics</a>
+                </div>
+
+                <div class="tool">
+                    <h3>Webhook Test</h3>
+                    <p>Test webhook notifications</p>
+                    <button onclick="testWebhook()" class="btn">Send Test Webhook</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="resources" class="section">
+            <h2>Resources</h2>
+            
+            <div class="resource-grid">
+                <a href="/openapi.yaml" class="resource-card">
+                    <h3>OpenAPI Spec</h3>
+                    <p>Download OpenAPI specification</p>
+                </a>
+                <a href="https://github.com/nmhung1294/INT3505E_02_demo" target="_blank" class="resource-card">
+                    <h3>GitHub Repository</h3>
+                    <p>View source code</p>
+                </a>
+                <a href="/swagger" target="_blank" class="resource-card">
+                    <h3>API Reference</h3>
+                    <p>Complete API documentation</p>
+                </a>
+                <a href="#" onclick="downloadPostman(); return false;" class="resource-card">
+                    <h3>Postman Collection</h3>
+                    <p>Import into Postman</p>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>Book Management API v14.0.0</p>
+            <p>Updated: December 4, 2025</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/portal.js"></script>
+</body>
+</html>

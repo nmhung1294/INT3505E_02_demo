@@ -1,1 +1,8 @@
 {"timestamp": "2025-11-20T10:04:31.000780Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T09:59:52.568088Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:05:02.316926Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:06:21.241261Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:07:05.849118Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:08:48.338702Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:08:51.905483Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}
+{"timestamp": "2025-12-04T10:11:09.005128Z", "level": "INFO", "logger": "book_management", "message": "Logging initialized for book_management", "module": "logging_config", "function": "setup_logging", "line": 131}

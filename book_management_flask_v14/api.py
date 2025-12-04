@@ -215,20 +215,20 @@ def login():
         logger.warning(f"Failed login attempt for email: {email}")
         abort(401, "Invalid email")
     
-    try:
-        token = jwt.encode(
-            {"id": user.id, "exp": datetime.utcnow() + timedelta(hours=2)},
-            SECRET_KEY,
-            algorithm="HS256",
-        )
-        
-        record_auth_attempt(success=True)
-        logger.info(f"User logged in: {user.email}", extra={'user_id': user.id})
-        
-        # Set token in HTTP-only cookie
-        response = make_response(jsonify({
-            "message": "Login successful",
-            "user": {"id": user.id, "name": user.name, "email": user.email}
+    token = jwt.encode(
+        {"id": user.id, "exp": datetime.utcnow() + timedelta(hours=2)},
+        SECRET_KEY,
+        algorithm="HS256",
+    )
+    
+    record_auth_attempt(success=True)
+    logger.info(f"User logged in: {user.email}", extra={'user_id': user.id})
+    
+    # Set token in HTTP-only cookie
+    response = make_response(jsonify({
+        "message": "Login successful",
+        "user": {"id": user.id, "name": user.name, "email": user.email},
+        "token": token
     }), 200)
     
     # Set HTTP-only cookie with security flags
@@ -242,7 +242,6 @@ def login():
     )
     
     return response
-
 
 # ==========================================
 # GOOGLE OAUTH2 (OpenID Connect) endpoints
